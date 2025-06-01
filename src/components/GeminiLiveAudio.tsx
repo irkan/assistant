@@ -348,6 +348,8 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
       }
 
       if (part?.text) {
+        console.log('📝 AI Response Text:', part.text);
+        console.log(part.text);
         setMessages(prev => [...prev, `🤖 Gemini: ${part?.text}`]);
       }
     }
@@ -440,9 +442,12 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
-              voiceName: 'Zephyr',
+              voiceName: 'Aoede',
             }
           }
+        },
+        outputAudioTranscription: {
+          enable: true
         },
         contextWindowCompression: {
           triggerTokens: '25600',
@@ -466,6 +471,13 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
           },
           onmessage: function (message: LiveServerMessage) {
             console.log('📨 Received message:', message);
+            
+            // Handle audio transcription messages  
+            if (message.serverContent?.outputTranscription) {
+              const transcription = message.serverContent.outputTranscription;
+              console.log('🎤 AI Audio Transcription:', transcription);
+              setMessages(prev => [...prev, `🎙️ AI Səsi (transcribe): ${transcription}`]);
+            }
             
             // Process messages immediately instead of queuing
             if (message.serverContent?.modelTurn?.parts) {
@@ -496,6 +508,9 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
               }
 
               if (part?.text) {
+                // 🌟 Real-time text logging - verilən nümunə kimi
+                console.log('📝 Real-time AI Text:', part.text);
+                console.log(part.text); // Sadə format
                 setMessages(prev => [...prev, `🤖 Gemini: ${part?.text}`]);
               }
             }

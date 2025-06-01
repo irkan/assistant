@@ -1,6 +1,7 @@
-import React, { memo, ReactNode, useEffect, useState } from "react";
+import React, { memo, ReactNode, useEffect, useState, useRef } from "react";
 import classNames from "classnames";
 import AudioPulse from "../audio-pulse/AudioPulse";
+import { SpeechToText } from "../../utils/speechToText";
 import "./control-tray.scss";
 
 export type ControlTrayProps = {
@@ -25,6 +26,13 @@ function ControlTray({
   inVolume = 0,
 }: ControlTrayProps) {
   const [muted, setMuted] = useState(isMuted);
+  const speechToTextRef = useRef<SpeechToText | null>(null);
+  const [isListeningToSpeech, setIsListeningToSpeech] = useState(false);
+
+  // Initialize SpeechToText
+  useEffect(() => {
+    speechToTextRef.current = new SpeechToText();
+  }, []);
 
   // Sync with parent's muted state only when actually different
   useEffect(() => {
@@ -58,6 +66,18 @@ function ControlTray({
     }
   };
 
+  const handleSpeechToTextToggle = () => {
+    if (speechToTextRef.current) {
+      if (isListeningToSpeech) {
+        speechToTextRef.current.stop();
+        setIsListeningToSpeech(false);
+      } else {
+        speechToTextRef.current.start();
+        setIsListeningToSpeech(true);
+      }
+    }
+  };
+
   return (
     <div className="control-tray">
       <nav className={classNames("actions-nav", { disabled: !isConnected })}>
@@ -76,6 +96,17 @@ function ControlTray({
         <div className="action-button no-action outlined">
           <AudioPulse volume={volume} active={isConnected} hover={false} />
         </div>
+
+        {/* Speech-to-Text test button */}
+        <button
+          className={classNames("action-button", { connected: isListeningToSpeech })}
+          onClick={handleSpeechToTextToggle}
+          title="Speech to Text Test"
+        >
+          <span className="material-symbols-outlined filled">
+            {isListeningToSpeech ? "hearing" : "record_voice_over"}
+          </span>
+        </button>
 
         {children}
       </nav>
