@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import './App.css';
 import GeminiLiveAudio from './components/GeminiLiveAudio';
 import Scene from './components/scene/Scene';
 import ControlTray from './components/control-tray/ControlTray';
+import { LipSyncRef } from './components/LipSyncIntegration';
 
 function App() {
   const apiKey = process.env.REACT_APP_GOOGLE_API_KEY || '';
@@ -12,6 +13,9 @@ function App() {
   const [shouldDisconnect, setShouldDisconnect] = useState(false);
   const [volume, setVolume] = useState(0);
   const [inVolume, setInVolume] = useState(0);
+  
+  // LipSync reference
+  const lipSyncRef = useRef<LipSyncRef>(null);
 
   const handleStart = useCallback(() => {
     console.log('🚀 Start button clicked - triggering connection');
@@ -23,6 +27,11 @@ function App() {
     console.log('🛑 Stop button clicked - triggering disconnection');
     setShouldDisconnect(true);
     setShouldConnect(false);
+    
+    // Stop any ongoing lip sync animation
+    if (lipSyncRef.current) {
+      lipSyncRef.current.stopSpeaking();
+    }
   }, []);
 
   const handleMuteToggle = useCallback((muted: boolean) => {
@@ -57,6 +66,14 @@ function App() {
     setInVolume(newInVolume);
   }, []);
 
+  // Lip sync callback for handling incoming text from Gemini
+  const handleTextReceived = useCallback((text: string) => {
+    console.log('📝 Text received from Gemini:', text);
+    if (lipSyncRef.current && text.trim()) {
+      lipSyncRef.current.speakText(text);
+    }
+  }, []);
+
   if (!apiKey) {
     return (
       <div className="App">
@@ -72,7 +89,7 @@ function App() {
   return (
     <div className="App">
       {/* 3D Scene with Character */}
-      <Scene />
+      <Scene lipSyncRef={lipSyncRef} />
       
       {/* Control Tray */}
       <ControlTray

@@ -1,16 +1,22 @@
 import React, { Suspense, useRef, useEffect, ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Environment } from '@react-three/drei';
-import { Model } from '../character/Ayla';
+import { Model, AylaModelRef } from '../character/Ayla';
+import LipSyncIntegration, { LipSyncRef } from '../LipSyncIntegration';
 import './Scene.css';
 
 interface SceneProps {
   children?: ReactNode;
+  lipSyncRef?: React.RefObject<LipSyncRef>;
 }
 
-const Scene = ({ children }: SceneProps) => {
-  const characterRef = useRef(null);
+const Scene = ({ children, lipSyncRef: externalLipSyncRef }: SceneProps) => {
+  const characterRef = useRef<AylaModelRef>(null);
+  const internalLipSyncRef = useRef<LipSyncRef>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  // Use external ref if provided, otherwise use internal ref
+  const lipSyncRef = externalLipSyncRef || internalLipSyncRef;
 
   useEffect(() => {
     const handleResize = () => {
@@ -33,6 +39,20 @@ const Scene = ({ children }: SceneProps) => {
     return () => {
       window.removeEventListener('resize', handleResize);
     };
+  }, []);
+
+  // Test lipsync funksionallığı (development üçün)
+  useEffect(() => {
+    const testLipSync = () => {
+      if (lipSyncRef.current) {
+        console.log('🎭 Testing lip sync functionality...');
+        lipSyncRef.current.speakText('Salam! Mən Ayla. Bu bir test mesajıdır.');
+      }
+    };
+
+    // 3 saniyə gözlədikdən sonra test et
+    const timeout = setTimeout(testLipSync, 3000);
+    return () => clearTimeout(timeout);
   }, []);
   
   return (
@@ -63,6 +83,12 @@ const Scene = ({ children }: SceneProps) => {
           </Suspense>
         </Canvas>
       </div>
+
+      {/* LipSync Integration - invisible component */}
+      <LipSyncIntegration 
+        ref={lipSyncRef}
+        characterRef={characterRef}
+      />
     </div>
   );
 };
