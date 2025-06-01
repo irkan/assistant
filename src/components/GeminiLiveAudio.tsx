@@ -599,7 +599,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
         audioRecorderRef.current.on('volume', (volume: number) => {
           const now = Date.now();
           if (now - lastVolumeUpdate > 200) { // Update every 200ms max
-            setMicrophoneLevel(volume);
+          setMicrophoneLevel(volume);
             lastVolumeUpdate = now;
           }
         });
