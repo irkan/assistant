@@ -508,19 +508,12 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
         
         audioRecorderRef.current.onData = (base64Data) => {
           if (sessionRef.current) {
-            console.log('🎤 Sending realtime audio input:', {
-              dataLength: base64Data.length,
-              mimeType: 'audio/pcm;rate=16000'
-            });
-            
             sessionRef.current.sendRealtimeInput({
               audio: {
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=16000'
               }
             });
-            
-            setMessages(prev => [...prev, '🎤 Voice data göndərildi...']);
           }
         };
         
