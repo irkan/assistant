@@ -6,10 +6,17 @@ import {
   Modality,
   Session,
 } from '@google/genai';
-import { AudioRecorder } from '../utils/audioUtils';
+import { SimpleAudioRecorder } from '../utils/audioUtils';
 
 interface GeminiLiveAudioProps {
   apiKey: string;
+  shouldConnect?: boolean;
+  shouldDisconnect?: boolean;
+  onConnectionChange?: (connected: boolean) => void;
+  onMuteChange?: (muted: boolean) => void;
+  externalMuted?: boolean;
+  onVolumeChange?: (volume: number) => void;
+  onInVolumeChange?: (inVolume: number) => void;
 }
 
 class GeminiAudioStreamer {
@@ -220,7 +227,16 @@ class GeminiAudioStreamer {
   }
 }
 
-const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
+const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ 
+  apiKey, 
+  shouldConnect = false,
+  shouldDisconnect = false,
+  onConnectionChange,
+  onMuteChange,
+  externalMuted = false,
+  onVolumeChange,
+  onInVolumeChange
+}) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -232,9 +248,64 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
 
   const sessionRef = useRef<Session | undefined>(undefined);
   const responseQueueRef = useRef<LiveServerMessage[]>([]);
-  const audioRecorderRef = useRef<AudioRecorder | undefined>(undefined);
+  const audioRecorderRef = useRef<SimpleAudioRecorder | undefined>(undefined);
   const audioStreamerRef = useRef<GeminiAudioStreamer | undefined>(undefined);
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
+
+  // Handle external connection control
+  useEffect(() => {
+    if (shouldConnect && !isConnected && !isLoading) {
+      connectToGemini();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldConnect]);
+
+  // Handle external disconnection control
+  useEffect(() => {
+    if (shouldDisconnect && isConnected) {
+      disconnect();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldDisconnect]);
+
+  // Handle external mute control - simplified
+  useEffect(() => {
+    // Sync internal mute state
+    if (onMuteChange) {
+      onMuteChange(externalMuted);
+    }
+    
+    if (externalMuted && isRecording) {
+      console.log('🔇 External mute: stopping microphone');
+      stopMicrophoneRecording();
+    } else if (!externalMuted && isConnected && !isRecording) {
+      console.log('🎤 External unmute: starting microphone');
+      startMicrophoneRecording();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalMuted]);
+
+  // Report volume changes to parent
+  useEffect(() => {
+    if (onVolumeChange) {
+      onVolumeChange(0); // For now, we'll use 0. We can enhance this based on audio streamer volume
+    }
+  }, [onVolumeChange]);
+
+  // Report input volume (microphone level) changes to parent
+  useEffect(() => {
+    if (onInVolumeChange) {
+      onInVolumeChange(microphoneLevel);
+    }
+  }, [microphoneLevel, onInVolumeChange]);
+
+  // Remove the notification effect that causes loops
+  // Keep only connection change notification
+  useEffect(() => {
+    if (onConnectionChange) {
+      onConnectionChange(isConnected);
+    }
+  }, [isConnected, onConnectionChange]);
 
   const handleModelTurn = useCallback((message: LiveServerMessage) => {
     console.log('🎯 handleModelTurn called with message:', {
@@ -338,15 +409,18 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
   const connectToGemini = useCallback(async () => {
     if (!apiKey) {
       setError('API key is required');
+      console.error('❌ API key missing!');
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    console.log('🚀 Starting Gemini Live connection...');
 
     try {
       console.log('🔄 Gemini Live API-yə qoşuluruq...');
       console.log('API Key uzunluğu:', apiKey.length);
+      console.log('API Key ilk 10 simvol:', apiKey.substring(0, 10) + '...');
 
       // Resume audio context first
       if (audioStreamerRef.current) {
@@ -387,6 +461,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
           onopen: function () {
             console.log('✅ Live session opened successfully');
             setIsConnected(true);
+            setIsLoading(false);
             setMessages(prev => [...prev, '✅ Gemini Live Audio-ya uğurla qoşuldu']);
           },
           onmessage: function (message: LiveServerMessage) {
@@ -432,10 +507,12 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
             console.error('❌ Live session error:', e);
             setError(`Live session xətası: ${e.message}`);
             setIsConnected(false);
+            setIsLoading(false);
           },
           onclose: function (e: CloseEvent) {
             console.error('🔌 Live session closed:', e);
             setIsConnected(false);
+            setIsLoading(false);
             const reason = e.reason || `Kod: ${e.code}`;
             setMessages(prev => [...prev, `🔌 Live session bağlandı: ${reason}`]);
           },
@@ -448,6 +525,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
       
     } catch (error) {
       console.error('❌ Live connection failed:', error);
+      setIsLoading(false);
       if (error instanceof Error) {
         console.error('Error details:', {
           name: error.name,
@@ -467,8 +545,6 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
       } else {
         setError('Naməlum Live qoşulma xətası');
       }
-    } finally {
-      setIsLoading(false);
     }
   }, [apiKey]);
 
@@ -504,9 +580,10 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
 
     try {
       if (!audioRecorderRef.current) {
-        audioRecorderRef.current = new AudioRecorder(16000);
+        audioRecorderRef.current = new SimpleAudioRecorder(16000);
         
-        audioRecorderRef.current.onData = (base64Data) => {
+        // Use EventEmitter pattern
+        audioRecorderRef.current.on('data', (base64Data: string) => {
           if (sessionRef.current) {
             sessionRef.current.sendRealtimeInput({
               audio: {
@@ -515,11 +592,17 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
               }
             });
           }
-        };
+        });
         
-        audioRecorderRef.current.onVolumeChange = (volume) => {
-          setMicrophoneLevel(volume);
-        };
+        // Throttle volume updates to prevent excessive state changes
+        let lastVolumeUpdate = 0;
+        audioRecorderRef.current.on('volume', (volume: number) => {
+          const now = Date.now();
+          if (now - lastVolumeUpdate > 200) { // Update every 200ms max
+            setMicrophoneLevel(volume);
+            lastVolumeUpdate = now;
+          }
+        });
       }
 
       await audioRecorderRef.current.start();
@@ -606,9 +689,10 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({ apiKey }) => {
     const initAudio = async () => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        audioContextRef.current = new AudioContextClass();
-        audioStreamerRef.current = new GeminiAudioStreamer(audioContextRef.current);
+        const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const audioContext = new AudioContextClass();
+        audioContextRef.current = audioContext;
+        audioStreamerRef.current = new GeminiAudioStreamer(audioContext);
         
         audioStreamerRef.current.onAudioStart = (startTime) => {
           console.log('🎵 Audio playback started at:', startTime);

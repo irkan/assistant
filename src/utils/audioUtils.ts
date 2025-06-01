@@ -1,3 +1,5 @@
+import EventEmitter from 'events';
+
 interface WavConversionOptions {
   numChannels: number;
   sampleRate: number;
@@ -122,71 +124,86 @@ export function downloadBlob(data: Uint8Array, filename: string, mimeType: strin
   window.URL.revokeObjectURL(url);
 }
 
-// Modern Audio Recording Class for Gemini Live Audio
-export class AudioRecorder {
+// Simplified audio recording class based on working implementation
+export class SimpleAudioRecorder extends EventEmitter {
   private stream: MediaStream | undefined;
   private audioContext: AudioContext | undefined;
   private source: MediaStreamAudioSourceNode | undefined;
   private processor: ScriptProcessorNode | undefined;
-  private isRecording: boolean = false;
-  
-  public onData: (data: string) => void = () => {};
-  public onVolumeChange: (volume: number) => void = () => {};
+  public recording: boolean = false;
+  private sampleRate: number;
 
-  constructor(private sampleRate = 16000) {}
+  constructor(sampleRate: number = 16000) {
+    super();
+    this.sampleRate = sampleRate;
+  }
 
   async start(): Promise<void> {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error('Could not request user media');
     }
 
-    this.stream = await navigator.mediaDevices.getUserMedia({ 
-      audio: {
-        sampleRate: this.sampleRate,
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      } 
-    });
+    console.log('🎤 SimpleAudioRecorder starting...');
 
-    this.audioContext = new AudioContext({ sampleRate: this.sampleRate });
-    this.source = this.audioContext.createMediaStreamSource(this.stream);
-    
-    // Create a script processor for audio processing
-    this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-    
-    this.processor.onaudioprocess = (event) => {
-      if (!this.isRecording) return;
-      
-      const inputData = event.inputBuffer.getChannelData(0);
-      
-      // Convert Float32 to Int16 and then to base64
-      const int16Array = new Int16Array(inputData.length);
-      let maxVolume = 0;
-      
-      for (let i = 0; i < inputData.length; i++) {
-        const sample = Math.max(-1, Math.min(1, inputData[i]));
-        int16Array[i] = sample * 0x7FFF;
-        maxVolume = Math.max(maxVolume, Math.abs(sample));
-      }
-      
-      // Emit volume level
-      this.onVolumeChange(maxVolume);
-      
-      // Convert to base64
-      const arrayBuffer = int16Array.buffer;
-      const base64 = this.arrayBufferToBase64(arrayBuffer);
-      this.onData(base64);
-    };
+    try {
+      // Get microphone access
+      this.stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: this.sampleRate,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true
+        }
+      });
 
-    this.source.connect(this.processor);
-    this.processor.connect(this.audioContext.destination);
-    this.isRecording = true;
+      // Create audio context
+      this.audioContext = new AudioContext({ sampleRate: this.sampleRate });
+      this.source = this.audioContext.createMediaStreamSource(this.stream);
+
+      // Create script processor (older but stable)
+      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      
+      this.processor.onaudioprocess = (event) => {
+        if (!this.recording) return;
+
+        const inputData = event.inputBuffer.getChannelData(0);
+        
+        // Convert Float32 to Int16
+        const int16Array = new Int16Array(inputData.length);
+        let maxVolume = 0;
+        
+        for (let i = 0; i < inputData.length; i++) {
+          const sample = Math.max(-1, Math.min(1, inputData[i]));
+          int16Array[i] = sample * 0x7FFF;
+          maxVolume = Math.max(maxVolume, Math.abs(sample));
+        }
+
+        // Emit volume (throttled)
+        this.emit('volume', maxVolume);
+
+        // Convert to base64
+        const arrayBuffer = int16Array.buffer;
+        const base64 = this.arrayBufferToBase64(arrayBuffer);
+        this.emit('data', base64);
+      };
+
+      // Connect nodes
+      this.source.connect(this.processor);
+      this.processor.connect(this.audioContext.destination);
+      
+      this.recording = true;
+      console.log('✅ SimpleAudioRecorder started successfully');
+      
+    } catch (error) {
+      console.error('❌ Error starting SimpleAudioRecorder:', error);
+      throw error;
+    }
   }
 
   stop(): void {
-    this.isRecording = false;
+    console.log('🛑 SimpleAudioRecorder stopping...');
+    
+    this.recording = false;
     
     if (this.processor) {
       this.processor.disconnect();
@@ -203,19 +220,21 @@ export class AudioRecorder {
       this.stream = undefined;
     }
     
-    if (this.audioContext) {
+    if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close();
       this.audioContext = undefined;
     }
+
+    console.log('✅ SimpleAudioRecorder stopped');
   }
 
   private arrayBufferToBase64(buffer: ArrayBuffer): string {
-    let binary = '';
     const bytes = new Uint8Array(buffer);
+    let binary = '';
     for (let i = 0; i < bytes.byteLength; i++) {
       binary += String.fromCharCode(bytes[i]);
     }
-    return window.btoa(binary);
+    return btoa(binary);
   }
 }
 

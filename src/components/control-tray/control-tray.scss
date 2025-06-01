@@ -1,0 +1,185 @@
+.action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 20, 25, 0.8);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  text-transform: lowercase;
+  cursor: pointer;
+  animation: opacity-pulse 3s ease-in infinite;
+  transition: all 0.2s ease-in-out;
+  width: 48px;
+  height: 48px;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 0, 0, 0);
+  user-select: none;
+  cursor: pointer;
+
+  &:focus {
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    outline: 2px solid rgba(255, 255, 255, 0.8);
+  }
+
+  &.outlined {
+    background: rgba(10, 10, 15, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .no-action {
+    pointer-events: none;
+  }
+
+  &:hover {
+    background: rgba(0, 0, 0, 0);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  &.connected {
+    background: rgba(59, 130, 246, 0.8);
+    color: rgba(147, 197, 253, 1);
+
+    &:hover {
+      border: 1px solid rgba(147, 197, 253, 1);
+    }
+  }
+}
+
+@property --volume {
+  syntax: "length";
+  inherit: false;
+  initial-value: 0px;
+}
+
+.disabled .mic-button,
+.mic-button.disabled {
+  &:before {
+    background: rgba(0, 0, 0, 0);
+  }
+}
+
+.mic-button {
+  position: relative;
+  background-color: #ef4444;
+  z-index: 1;
+  color: black;
+  transition: all 0.2s ease-in;
+
+  &:focus {
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    outline: 2px solid #ef4444;
+  }
+
+  &:hover {
+    background-color: #f87171;
+  }
+
+  &:before {
+    position: absolute;
+    z-index: -1;
+    top: calc(var(--volume) * -1);
+    left: calc(var(--volume) * -1);
+    display: block;
+    content: "";
+    opacity: 0.35;
+    background-color: #ef4444;
+    width: calc(100% + var(--volume) * 2);
+    height: calc(100% + var(--volume) * 2);
+    border-radius: 24px;
+    transition: all 0.02s ease-in-out;
+  }
+}
+
+.connect-toggle {
+  &:focus {
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    outline: 2px solid rgba(255, 255, 255, 0.8);
+  }
+
+  &:not(.connected) {
+    background-color: #3b82f6;
+    color: #f8fafc;
+  }
+}
+
+.control-tray {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 0);
+  display: inline-flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
+  padding-bottom: 18px;
+  z-index: 50;
+
+  .disabled .action-button,
+  .action-button.disabled {
+    background: rgba(0, 0, 0, 0);
+    border: 1px solid rgba(100, 116, 139, 0.5);
+    color: rgba(100, 116, 139, 0.5);
+  }
+
+  .connection-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+
+    .connection-button-container {
+      border-radius: 27px;
+      border: 1px solid rgba(100, 116, 139, 0.5);
+      background: rgba(15, 23, 42, 0.8);
+      padding: 10px;
+    }
+
+    .text-indicator {
+      font-size: 11px;
+      color: #3b82f6;
+      user-select: none;
+    }
+
+    &:not(.connected) {
+      .text-indicator {
+        opacity: 0;
+      }
+    }
+  }
+}
+
+.actions-nav {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(100, 116, 139, 0.5);
+  border-radius: 27px;
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+  overflow: clip;
+  padding: 10px;
+
+  transition: all 0.6s ease-in;
+
+  &>* {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+@keyframes opacity-pulse {
+  0% {
+    opacity: 0.9;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.9;
+  }
+} 

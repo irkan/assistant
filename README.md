@@ -187,3 +187,142 @@ Pull request və issue-lar məmnuniyyətlə qarşılanır!
 ---
 
 **🎉 Gemini AI ilə real-time audio söhbətə başlayın! 🎤🔊**
+
+# Gemini Live Audio with 3D Character
+
+Bu proyekt Google Gemini Live Audio API-ni Three.js 3D karakteri ilə birləşdirən interaktiv bir tətbiqdir. Ayla adlı 3D karakter səslə ünsiyyət qura bilir və real vaxtda cavab verir.
+
+## Xüsusiyyətlər
+
+- 🎭 **3D Karakter**: Ayla adlı animasiyalı 3D karakter
+- 🎤 **Səs Tanıma**: Real vaxtda səs tanıma və emal
+- 🔊 **Səs Sintezi**: Gemini-dən gələn cavabların səsləndirilməsi
+- 👁️ **Göz Qırpma**: Təbii göz qırpma animasiyası
+- 🎮 **İnteraktiv İdarəetmə**: Start/Stop və səs açma/bağlama düymələri
+- 🌅 **Gözəl Mühit**: Sunset mühiti və background şəkli
+
+## Quraşdırma
+
+1. **Layihəni klonlayın:**
+```bash
+git clone <repository-url>
+cd assistant
+```
+
+2. **Dependencies yükləyin:**
+```bash
+npm install --legacy-peer-deps
+```
+
+3. **Environment dəyişənlərini təyin edin:**
+`.env` faylı yaradın və Google Gemini API açarınızı əlavə edin:
+```
+REACT_APP_GOOGLE_API_KEY=your_gemini_api_key_here
+```
+
+4. **Tətbiqi başladın:**
+```bash
+npm start
+```
+
+Tətbiq `http://localhost:3000` ünvanında açılacaq.
+
+## İstifadə
+
+1. **Start düyməsini basın** - Gemini Live Audio-ya qoşulmaq üçün
+2. **Mikrofon düyməsi** - Səsi açmaq/bağlamaq üçün
+3. **3D Karakter** - Mouse ilə kameranı idarə edə bilərsiniz (OrbitControls)
+4. **Danışın** - Karakterlə səsli ünsiyyət qurun
+
+## Texniki Detallar
+
+### İstifadə olunan Texnologiyalar
+
+- **React 18** - UI framework
+- **Three.js** - 3D qrafika
+- **@react-three/fiber** - React üçün Three.js
+- **@react-three/drei** - Three.js helpers
+- **Google Gemini API** - AI və səs emalı
+- **TypeScript** - Type safety
+- **SCSS** - Styling
+
+### 3D Model
+
+- **Karakter**: Ayla (CC_Base_Body sistemi)
+- **Animasiyalar**: Idle animasiyalar və göz qırpma
+- **Morph Targets**: Üz ifadələri üçün hazır
+- **Format**: GLTF/GLB
+
+### Səs Sistemi
+
+- **Input**: Real vaxtda mikrofon girişi
+- **Output**: PCM16 formatında səs çıxışı
+- **Streaming**: AudioContext əsaslı real vaxtda streaming
+- **Codec**: 24kHz sample rate
+
+## Faylların Strukturu
+
+```
+src/
+├── components/
+│   ├── character/
+│   │   └── Ayla.tsx          # 3D karakter komponenti
+│   ├── scene/
+│   │   ├── Scene.tsx         # 3D səhnə
+│   │   └── Scene.css         # Səhnə stilləri
+│   ├── control-tray/
+│   │   ├── ControlTray.tsx   # İdarəetmə paneli
+│   │   └── control-tray.scss # Panel stilləri
+│   └── GeminiLiveAudio.tsx   # Gemini API inteqrasiyası
+├── utils/
+│   └── audioUtils.ts         # Səs utility funksiyaları
+└── App.tsx                   # Əsas tətbiq komponenti
+
+public/
+├── model/
+│   ├── ayla.glb             # 3D karakter modeli
+│   └── motion.glb           # Animasiya faylı
+└── background.jpg           # Arxa plan şəkli
+```
+
+## API Açarı Əldə Etmək
+
+1. [Google AI Studio](https://aistudio.google.com/) saytına daxil olun
+2. API açarı yaradın
+3. Gemini Live Audio API-ni aktivləşdirin
+4. Açarı `.env` faylına əlavə edin
+
+## Problemlərin Həlli
+
+### Model yüklənmir
+- `public/model/` qovluğunda `ayla.glb` və `motion.glb` fayllarının olduğunu yoxlayın
+- Browser console-da xətaları yoxlayın
+
+### Səs işləmir
+- Mikrofon icazəsi verildiyini yoxlayın
+- HTTPS üzərində işlədiyinizi təmin edin (localhost istisna)
+- Audio context-in aktivləşdiyini yoxlayın
+
+### API xətaları
+- API açarının düzgün təyin edildiyini yoxlayın
+- İnternet bağlantısını yoxlayın
+- Gemini API limitlərini yoxlayın
+
+## Töhfə Vermək
+
+1. Fork edin
+2. Feature branch yaradın (`git checkout -b feature/amazing-feature`)
+3. Commit edin (`git commit -m 'Add amazing feature'`)
+4. Push edin (`git push origin feature/amazing-feature`)
+5. Pull Request açın
+
+## Lisenziya
+
+Bu proyekt MIT lisenziyası altındadır.
+
+## Təşəkkürlər
+
+- Google Gemini API komandası
+- Three.js icması
+- React Three Fiber komandası
+- Ayla 3D model yaradıcıları
