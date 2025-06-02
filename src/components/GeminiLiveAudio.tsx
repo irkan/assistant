@@ -19,6 +19,7 @@ interface GeminiLiveAudioProps {
   externalMuted?: boolean;
   onVolumeChange?: (volume: number) => void;
   onInVolumeChange?: (inVolume: number) => void;
+  onLipsyncUpdate?: (text: string, duration: number) => void;
 }
 
 class GeminiAudioStreamer {
@@ -33,10 +34,12 @@ class GeminiAudioStreamer {
   private checkInterval: number | null = null;
   private initialBufferTime: number = 0.1;
   private endOfQueueAudioSource: AudioBufferSourceNode | null = null;
+  private totalAudioDuration: number = 0;
 
   public onComplete = () => {};
   public onAudioStart = (startTime: number) => {};
   public onAudioProgress = (currentTime: number, isPlaying: boolean) => {};
+  public onLipsyncUpdate = (text: string, duration: number) => {};
 
   constructor(public context: AudioContext) {
     this.gainNode = this.context.createGain();
@@ -53,6 +56,13 @@ class GeminiAudioStreamer {
     }
 
     this.addPCM16(bytes);
+  }
+
+  private calculateAudioDuration(pcmData: Uint8Array): number {
+    // PCM16 = 2 bytes per sample, sample rate = 24000 Hz
+    const sampleCount = pcmData.length / 2;
+    const duration = sampleCount / this.sampleRate;
+    return duration;
   }
 
   addPCM16(chunk: Uint8Array) {
@@ -226,6 +236,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
   externalMuted = false,
   onVolumeChange,
   onInVolumeChange,
+  onLipsyncUpdate,
 }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -241,6 +252,9 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
   const audioRecorderRef = useRef<SimpleAudioRecorder | undefined>(undefined);
   const audioStreamerRef = useRef<GeminiAudioStreamer | undefined>(undefined);
   const audioContextRef = useRef<AudioContext | undefined>(undefined);
+  
+  // Simple transcription storage for lipsync
+  const lastTranscriptionTextRef = useRef<string>('');
 
   // Handle external connection control
   useEffect(() => {
@@ -322,57 +336,30 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
         setMessages(prev => [...prev, `📁 File: ${part?.fileData?.fileUri}`]);
       }
 
+      // Audio is already processed in onMessage, just log here
       if (part?.inlineData) {
         const inlineData = part?.inlineData;
-        console.log('🎵 Audio data alındı:', {
+        console.log('⏭️ Audio already processed in onMessage:', {
           dataLength: inlineData?.data?.length,
           mimeType: inlineData?.mimeType,
-          source: 'modelTurn'
+          source: 'handleModelTurn'
         });
-        
-        // Use AudioContext-based streaming
-        if (inlineData?.data && audioStreamerRef.current) {
-          try {
-            setMessages(prev => [...prev, '🎵 Voice response alındı, səsləndirilir...']);
-            audioStreamerRef.current.addBase64Audio(
-              inlineData.data, 
-              inlineData.mimeType ?? 'audio/pcm;rate=24000'
-            );
-          } catch (error) {
-            console.error('❌ Error playing audio:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Naməlum xəta';
-            setMessages(prev => [...prev, '❌ Audio oynatma xətası: ' + errorMessage]);
-          }
-        }
       }
 
       if (part?.text) {
-        console.log('📝 AI Response Text:', part.text);
+        console.log('📝 AI Response Text (legacy):', part.text);
         console.log(part.text);
-        setMessages(prev => [...prev, `🤖 Gemini: ${part?.text}`]);
+        setMessages(prev => [...prev, `🤖 Gemini (legacy): ${part?.text}`]);
       }
     }
 
-    // Check for other message types that might contain audio
+    // Legacy audio processing (simplified - no duplicate audio)
     if (message.serverContent && !message.serverContent.modelTurn) {
       console.log('🔍 Non-modelTurn message:', message.serverContent);
       
-      // Check if there's audio in a different structure
       const serverContent = message.serverContent as any;
       if (serverContent.inlineData) {
-        console.log('🎵 Found audio in serverContent.inlineData');
-        const inlineData = serverContent.inlineData;
-        if (inlineData?.data && audioStreamerRef.current) {
-          try {
-            setMessages(prev => [...prev, '🎵 Realtime voice response alındı...']);
-            audioStreamerRef.current.addBase64Audio(
-              inlineData.data, 
-              inlineData.mimeType ?? 'audio/pcm;rate=24000'
-            );
-          } catch (error) {
-            console.error('❌ Error playing realtime audio:', error);
-          }
-        }
+        console.log('⏭️ Legacy audio already processed in onMessage');
       }
     }
   }, []);
@@ -474,40 +461,75 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
               const transcription = message.serverContent.outputTranscription;
               console.log('🎤 AI Audio Transcription:', transcription);
               setMessages(prev => [...prev, `🎙️ AI Səsi (transcribe): ${transcription}`]);
+              
+              // Store latest transcription text for lipsync
+              if (typeof transcription === 'object' && transcription.text) {
+                lastTranscriptionTextRef.current = transcription.text;
+                console.log('📝 Latest transcription stored:', transcription.text);
+              } else if (typeof transcription === 'string') {
+                lastTranscriptionTextRef.current = transcription;
+                console.log('📝 Latest transcription stored:', transcription);
+              }
             }
             
-            // Process messages immediately instead of queuing
+            // Process audio immediately when it arrives
             if (message.serverContent?.modelTurn?.parts) {
               const part = message.serverContent?.modelTurn?.parts?.[0];
 
-              if (part?.inlineData) {
-                const inlineData = part?.inlineData;
+              if (part?.inlineData?.data && audioStreamerRef.current) {
+                const inlineData = part.inlineData;
+                const audioData = inlineData.data!; // We already checked it exists
                 
-                // Use AudioContext-based streaming immediately
-                if (inlineData?.data && audioStreamerRef.current) {
-                  try {
-                    setMessages(prev => [...prev, '🎵 Real-time voice response alındı...']);
-                    audioStreamerRef.current.addBase64Audio(
-                      inlineData.data, 
-                      inlineData.mimeType ?? 'audio/pcm;rate=24000'
-                    );
-                  } catch (error) {
-                    console.error('❌ Error playing real-time audio:', error);
-                    const errorMessage = error instanceof Error ? error.message : 'Naməlum xəta';
-                    setMessages(prev => [...prev, '❌ Real-time audio oynatma xətası: ' + errorMessage]);
+                try {
+                  setMessages(prev => [...prev, '🎵 Audio response alındı...']);
+                  
+                  // Use part text or latest transcription
+                  const textForLipsync = part.text || lastTranscriptionTextRef.current;
+                  
+                  // Calculate duration from base64 audio data
+                  const binaryString = atob(audioData);
+                  const bytes = new Uint8Array(binaryString.length);
+                  for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
                   }
+                  const sampleCount = bytes.length / 2; // PCM16 = 2 bytes per sample
+                  const duration = sampleCount / 24000; // 24kHz sample rate
+                  
+                  console.log('🎙️ Lipsync Data:', { 
+                    text: textForLipsync, 
+                    duration: duration.toFixed(3) + 's',
+                    audioBytes: bytes.length 
+                  });
+                  
+                  // Call lipsync callback
+                  if (onLipsyncUpdate && textForLipsync && duration > 0) {
+                    onLipsyncUpdate(textForLipsync, duration);
+                    console.log('🎙️ Lipsync Update Called:', { text: textForLipsync, duration });
+                  }
+                  
+                  // Play audio (simplified - no text parameter needed)
+                  audioStreamerRef.current.addBase64Audio(
+                    audioData, 
+                    inlineData.mimeType ?? 'audio/pcm;rate=24000'
+                  );
+                  
+                  // Clear used transcription
+                  if (textForLipsync === lastTranscriptionTextRef.current) {
+                    lastTranscriptionTextRef.current = '';
+                  }
+                } catch (error) {
+                  console.error('❌ Error processing audio:', error);
+                  setMessages(prev => [...prev, '❌ Audio prosess xətası: ' + (error instanceof Error ? error.message : 'Naməlum')]);
                 }
               }
 
               if (part?.text) {
-                // 🌟 Real-time text logging - verilən nümunə kimi
-                console.log('📝 Real-time AI Text:', part.text);
-                console.log(part.text); // Sadə format
-                setMessages(prev => [...prev, `🤖 Gemini: ${part?.text}`]);
+                console.log('📝 AI Text:', part.text);
+                setMessages(prev => [...prev, `🤖 Gemini: ${part.text}`]);
               }
             }
             
-            // Also add to queue for legacy handleTurn processing
+            // Legacy queue for handleTurn (but audio won't be reprocessed)
             responseQueueRef.current.push(message);
           },
           onerror: function (e: ErrorEvent) {
@@ -686,6 +708,9 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
     setMicrophoneLevel(0);
     setIsAudioPlaying(false);
     responseQueueRef.current = [];
+    
+    // Clear accumulated text for lipsync
+    lastTranscriptionTextRef.current = '';
   }, []);
 
   useEffect(() => {
@@ -718,6 +743,13 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
           console.log('🎵 Audio playback completed');
           setIsAudioPlaying(false);
           setMessages(prev => [...prev, '🔇 AI danışığını tamamladı']);
+        };
+
+        audioStreamerRef.current.onLipsyncUpdate = (text, duration) => {
+          console.log('🎙️ Lipsync Update:', { text, duration });
+          if (onLipsyncUpdate) {
+            onLipsyncUpdate(text, duration);
+          }
         };
 
         console.log('🎵 Audio system initialized');
