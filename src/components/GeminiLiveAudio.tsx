@@ -12,7 +12,9 @@ interface GeminiLiveAudioProps {
   apiKey: string;
   shouldConnect?: boolean;
   shouldDisconnect?: boolean;
+  shouldStartRecording?: boolean;
   onConnectionChange?: (connected: boolean) => void;
+  onRecordingStart?: () => void;
   onMuteChange?: (muted: boolean) => void;
   externalMuted?: boolean;
   onVolumeChange?: (volume: number) => void;
@@ -42,11 +44,6 @@ class GeminiAudioStreamer {
   }
 
   addBase64Audio(base64Data: string, mimeType: string) {
-    console.log('🎵 Adding base64 audio:', { 
-      dataLength: base64Data.length, 
-      mimeType,
-      isPlaying: this.isPlaying 
-    });
 
     // Convert base64 to PCM16
     const binaryString = atob(base64Data);
@@ -59,7 +56,6 @@ class GeminiAudioStreamer {
   }
 
   addPCM16(chunk: Uint8Array) {
-    console.log('🎵 Processing PCM16 chunk:', chunk.length, 'bytes');
     
     const float32Array = new Float32Array(chunk.length / 2);
     const dataView = new DataView(chunk.buffer);
@@ -85,8 +81,6 @@ class GeminiAudioStreamer {
       this.audioQueue.push(buffer);
       this.processingBuffer = this.processingBuffer.slice(this.bufferSize);
     }
-
-    console.log('🎵 Audio queue length:', this.audioQueue.length);
 
     if (!this.isPlaying) {
       console.log('🎵 Starting audio playback...');
@@ -117,12 +111,6 @@ class GeminiAudioStreamer {
       const audioData = this.audioQueue.shift()!;
       const audioBuffer = this.createAudioBuffer(audioData);
       const source = this.context.createBufferSource();
-
-      console.log('🎵 Scheduling buffer:', {
-        bufferDuration: audioBuffer.duration,
-        scheduledTime: this.scheduledTime,
-        currentTime: this.context.currentTime
-      });
 
       if (this.audioQueue.length === 0) {
         if (this.endOfQueueAudioSource) {
@@ -231,11 +219,13 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
   apiKey, 
   shouldConnect = false,
   shouldDisconnect = false,
+  shouldStartRecording = false,
   onConnectionChange,
+  onRecordingStart,
   onMuteChange,
   externalMuted = false,
   onVolumeChange,
-  onInVolumeChange
+  onInVolumeChange,
 }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -267,6 +257,15 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldDisconnect]);
+
+  // Handle automatic recording start
+  useEffect(() => {
+    if (shouldStartRecording && isConnected && !isRecording) {
+      console.log('🎤 Auto-starting recording after connection...');
+      startMicrophoneRecording();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldStartRecording, isConnected, isRecording]);
 
   // Handle external mute control - simplified
   useEffect(() => {
@@ -469,9 +468,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
             setIsLoading(false);
             setMessages(prev => [...prev, '✅ Gemini Live Audio-ya uğurla qoşuldu']);
           },
-          onmessage: function (message: LiveServerMessage) {
-            console.log('📨 Received message:', message);
-            
+          onmessage: function (message: LiveServerMessage) {            
             // Handle audio transcription messages  
             if (message.serverContent?.outputTranscription) {
               const transcription = message.serverContent.outputTranscription;
@@ -485,11 +482,6 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
 
               if (part?.inlineData) {
                 const inlineData = part?.inlineData;
-                console.log('🎵 Real-time audio data alındı:', {
-                  dataLength: inlineData?.data?.length,
-                  mimeType: inlineData?.mimeType,
-                  source: 'real-time'
-                });
                 
                 // Use AudioContext-based streaming immediately
                 if (inlineData?.data && audioStreamerRef.current) {
@@ -623,11 +615,14 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
       await audioRecorderRef.current.start();
       setIsRecording(true);
       setMessages(prev => [...prev, '🎤 Mikrofon başladı, danışa bilərsiniz...']);
+      if (onRecordingStart) {
+        onRecordingStart();
+      }
     } catch (error) {
       console.error('Error starting microphone:', error);
       setError(`Mikrofon xətası: ${error instanceof Error ? error.message : 'Naməlum xəta'}`);
     }
-  }, []);
+  }, [onRecordingStart]);
 
   const stopMicrophoneRecording = useCallback(() => {
     if (audioRecorderRef.current) {

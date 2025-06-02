@@ -1,9 +1,8 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import './App.css';
 import GeminiLiveAudio from './components/GeminiLiveAudio';
 import Scene from './components/scene/Scene';
 import ControlTray from './components/control-tray/ControlTray';
-import { LipSyncRef } from './components/LipSyncIntegration';
 
 function App() {
   const apiKey = process.env.REACT_APP_GOOGLE_API_KEY || '';
@@ -11,67 +10,50 @@ function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [shouldConnect, setShouldConnect] = useState(false);
   const [shouldDisconnect, setShouldDisconnect] = useState(false);
+  const [shouldStartRecording, setShouldStartRecording] = useState(false);
   const [volume, setVolume] = useState(0);
   const [inVolume, setInVolume] = useState(0);
-  
-  // LipSync reference
-  const lipSyncRef = useRef<LipSyncRef>(null);
 
-  const handleStart = useCallback(() => {
-    console.log('🚀 Start button clicked - triggering connection');
+  const handleConnect = useCallback(() => {
+    console.log('🚀 Start button clicked - Starting live session and recording...');
     setShouldConnect(true);
     setShouldDisconnect(false);
+    // Automatically start recording after connection
+    setShouldStartRecording(true);
   }, []);
 
-  const handleStop = useCallback(() => {
-    console.log('🛑 Stop button clicked - triggering disconnection');
+  const handleDisconnect = useCallback(() => {
     setShouldDisconnect(true);
     setShouldConnect(false);
-    
-    // Stop any ongoing lip sync animation
-    if (lipSyncRef.current) {
-      lipSyncRef.current.stopSpeaking();
-    }
-  }, []);
-
-  const handleMuteToggle = useCallback((muted: boolean) => {
-    console.log('🔊 Mute toggle:', muted);
-    setIsMuted(muted);
   }, []);
 
   const handleConnectionChange = useCallback((connected: boolean) => {
-    console.log('🔗 Connection status changed:', connected);
     setIsConnected(connected);
-    // Reset trigger states after connection change
-    if (connected) {
-      setShouldConnect(false);
-    } else {
-      setShouldDisconnect(false);
+    setShouldConnect(false);
+    setShouldDisconnect(false);
+    
+    // Reset recording flag when connection changes
+    if (!connected) {
+      setShouldStartRecording(false);
     }
   }, []);
 
   const handleMuteChange = useCallback((muted: boolean) => {
-    console.log('🔇 Mute status changed:', muted);
-    // Prevent infinite loops by only updating if different
-    if (muted !== isMuted) {
-      setIsMuted(muted);
-    }
-  }, [isMuted]);
-
-  const handleVolumeChange = useCallback((newVolume: number) => {
-    setVolume(newVolume);
+    setIsMuted(muted);
   }, []);
 
-  const handleInVolumeChange = useCallback((newInVolume: number) => {
-    setInVolume(newInVolume);
+  const handleVolumeChange = useCallback((volume: number) => {
+    setVolume(volume);
   }, []);
 
-  // Lip sync callback for handling incoming text from Gemini
-  const handleTextReceived = useCallback((text: string) => {
-    console.log('📝 Text received from Gemini:', text);
-    if (lipSyncRef.current && text.trim()) {
-      lipSyncRef.current.speakText(text);
-    }
+  const handleInVolumeChange = useCallback((inVolume: number) => {
+    setInVolume(inVolume);
+  }, []);
+
+  // Recording started callback to reset flag
+  const handleRecordingStart = useCallback(() => {
+    console.log('🎤 Recording started, resetting shouldStartRecording flag');
+    setShouldStartRecording(false);
   }, []);
 
   if (!apiKey) {
@@ -88,40 +70,30 @@ function App() {
 
   return (
     <div className="App">
-      {/* 3D Scene with Character */}
-      <Scene lipSyncRef={lipSyncRef} />
+      <Scene />
       
-      {/* Control Tray */}
       <ControlTray
-        onStart={handleStart}
-        onStop={handleStop}
-        onMuteToggle={handleMuteToggle}
+        onStart={handleConnect}
+        onStop={handleDisconnect}
+        onMuteToggle={handleMuteChange}
         isConnected={isConnected}
         isMuted={isMuted}
         volume={volume}
         inVolume={inVolume}
       />
-
-      {/* Gemini Component - positioned off-screen but functional */}
-      <div style={{ 
-        position: 'absolute', 
-        top: '-9999px', 
-        left: '-9999px',
-        width: '1px',
-        height: '1px',
-        overflow: 'hidden'
-      }}>
-        <GeminiLiveAudio 
-          apiKey={apiKey}
-          shouldConnect={shouldConnect}
-          shouldDisconnect={shouldDisconnect}
-          onConnectionChange={handleConnectionChange}
-          onMuteChange={handleMuteChange}
-          externalMuted={isMuted}
-          onVolumeChange={handleVolumeChange}
-          onInVolumeChange={handleInVolumeChange}
-        />
-      </div>
+      
+      <GeminiLiveAudio 
+        apiKey={apiKey}
+        shouldConnect={shouldConnect}
+        shouldDisconnect={shouldDisconnect}
+        shouldStartRecording={shouldStartRecording}
+        onConnectionChange={handleConnectionChange}
+        onRecordingStart={handleRecordingStart}
+        onMuteChange={handleMuteChange}
+        externalMuted={isMuted}
+        onVolumeChange={handleVolumeChange}
+        onInVolumeChange={handleInVolumeChange}
+      />
     </div>
   );
 }

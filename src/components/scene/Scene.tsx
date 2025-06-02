@@ -1,22 +1,15 @@
 import React, { Suspense, useRef, useEffect, ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Environment } from '@react-three/drei';
-import { Model, AylaModelRef } from '../character/Ayla';
-import LipSyncIntegration, { LipSyncRef } from '../LipSyncIntegration';
+import { Model } from '../character/Ayla';
 import './Scene.css';
 
 interface SceneProps {
   children?: ReactNode;
-  lipSyncRef?: React.RefObject<LipSyncRef>;
 }
 
-const Scene = ({ children, lipSyncRef: externalLipSyncRef }: SceneProps) => {
-  const characterRef = useRef<AylaModelRef>(null);
-  const internalLipSyncRef = useRef<LipSyncRef>(null);
+const Scene = ({ children }: SceneProps) => {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-
-  // Use external ref if provided, otherwise use internal ref
-  const lipSyncRef = externalLipSyncRef || internalLipSyncRef;
 
   useEffect(() => {
     const handleResize = () => {
@@ -29,32 +22,12 @@ const Scene = ({ children, lipSyncRef: externalLipSyncRef }: SceneProps) => {
       }
     };
 
-    // Initial sizing
-    handleResize();
-
-    // Add event listener
     window.addEventListener('resize', handleResize);
+    handleResize(); // Call once on mount
 
-    // Clean up
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Test lipsync funksionallığı (development üçün)
-  useEffect(() => {
-    const testLipSync = () => {
-      if (lipSyncRef.current) {
-        console.log('🎭 Testing lip sync functionality...');
-        lipSyncRef.current.speakText('Salam! Mən Ayla. Bu bir test mesajıdır.');
-      }
-    };
-
-    // 3 saniyə gözlədikdən sonra test et
-    const timeout = setTimeout(testLipSync, 3000);
-    return () => clearTimeout(timeout);
-  }, []);
-  
   return (
     <div className="scene-container">
       {/* Background image */}
@@ -77,18 +50,12 @@ const Scene = ({ children, lipSyncRef: externalLipSyncRef }: SceneProps) => {
             {children}
 
             {/* Ayla character model */}
-            <Model ref={characterRef} position={[0, -1.4, 0]} />
+            <Model position={[0, -1.4, 0]} />
 
             <Environment preset="sunset" />
           </Suspense>
         </Canvas>
       </div>
-
-      {/* LipSync Integration - invisible component */}
-      <LipSyncIntegration 
-        ref={lipSyncRef}
-        characterRef={characterRef}
-      />
     </div>
   );
 };
