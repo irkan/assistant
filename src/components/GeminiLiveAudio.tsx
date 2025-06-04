@@ -8,6 +8,15 @@ import {
 } from '@google/genai';
 import { SimpleAudioRecorder } from '../utils/audioUtils';
 
+export interface MorphTargetData {
+    morphTarget: string;
+    weight: string;
+  }
+
+export interface AylaModelRef {
+  updateMorphTargets: (targets: MorphTargetData[]) => void;
+}
+
 interface GeminiLiveAudioProps {
   apiKey: string;
   shouldConnect?: boolean;
@@ -20,6 +29,7 @@ interface GeminiLiveAudioProps {
   onVolumeChange?: (volume: number) => void;
   onInVolumeChange?: (inVolume: number) => void;
   onLipsyncUpdate?: (text: string, duration: number) => void;
+  aylaModelRef?: React.RefObject<AylaModelRef>;
 }
 
 class GeminiAudioStreamer {
@@ -128,7 +138,7 @@ class GeminiAudioStreamer {
         }
         this.endOfQueueAudioSource = source;
         source.onended = () => {
-          console.log('🎵 Audio chunk ended');
+          // console.log('🎵 Audio chunk ended');
           if (
             !this.audioQueue.length &&
             this.endOfQueueAudioSource === source
@@ -237,6 +247,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
   onVolumeChange,
   onInVolumeChange,
   onLipsyncUpdate,
+  aylaModelRef,
 }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -255,6 +266,14 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
   
   // Simple transcription storage for lipsync
   const lastTranscriptionTextRef = useRef<string>('');
+  const currentWordRef = useRef<{text: string, duration: number} | null>(null);
+  
+  // Animation queue system to prevent concurrency issues
+  const animationQueueRef = useRef<Array<{char: string, duration: number, isNeutral?: boolean}>>([]);
+  const isAnimatingRef = useRef<boolean>(false);
+  const currentAnimationTimeouts = useRef<NodeJS.Timeout[]>([]);
+  const processAnimationQueueRef = useRef<() => void>();
+  const addToAnimationQueueRef = useRef<(text: string, duration: number) => void>();
 
   // Handle external connection control
   useEffect(() => {
@@ -459,16 +478,16 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
             // Handle audio transcription messages  
             if (message.serverContent?.outputTranscription) {
               const transcription = message.serverContent.outputTranscription;
-              console.log('🎤 AI Audio Transcription:', transcription);
+              // console.log('🎤 AI Audio Transcription:', transcription);
               setMessages(prev => [...prev, `🎙️ AI Səsi (transcribe): ${transcription}`]);
               
               // Store latest transcription text for lipsync
               if (typeof transcription === 'object' && transcription.text) {
                 lastTranscriptionTextRef.current = transcription.text;
-                console.log('📝 Latest transcription stored:', transcription.text);
+                // console.log('📝 Latest transcription stored:', transcription.text);
               } else if (typeof transcription === 'string') {
                 lastTranscriptionTextRef.current = transcription;
-                console.log('📝 Latest transcription stored:', transcription);
+                // console.log('📝 Latest transcription stored:', transcription);
               }
             }
             
@@ -494,17 +513,27 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
                   }
                   const sampleCount = bytes.length / 2; // PCM16 = 2 bytes per sample
                   const duration = sampleCount / 24000; // 24kHz sample rate
+                  const durationMs = Math.round(duration * 1000); // Convert to milliseconds
                   
-                  console.log('🎙️ Lipsync Data:', { 
-                    text: textForLipsync, 
-                    duration: duration.toFixed(3) + 's',
-                    audioBytes: bytes.length 
-                  });
-                  
-                  // Call lipsync callback
-                  if (onLipsyncUpdate && textForLipsync && duration > 0) {
-                    onLipsyncUpdate(textForLipsync, duration);
-                    console.log('🎙️ Lipsync Update Called:', { text: textForLipsync, duration });
+                  // Smart duration accumulation logic
+                  if (textForLipsync && textForLipsync.trim().length > 0) {
+                    // New word/text arrived
+                    if (currentWordRef.current) {
+                      if (audioStreamerRef.current) {
+                        audioStreamerRef.current.onLipsyncUpdate(currentWordRef.current.text, currentWordRef.current.duration);
+                      }
+                    }
+                    
+                    // Start new word (silently)
+                    currentWordRef.current = {
+                      text: textForLipsync.trim(),
+                      duration: durationMs
+                    };
+                  } else {
+                    // Empty text - add duration to current word (silently)
+                    if (currentWordRef.current) {
+                      currentWordRef.current.duration += durationMs;
+                    }
                   }
                   
                   // Play audio (simplified - no text parameter needed)
@@ -659,31 +688,6 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
     console.log('🔇 Microphone stopped - real-time processing active');
   }, []);
 
-  const testAudio = useCallback(() => {
-    console.log('🔊 Test audio playing...');
-    setMessages(prev => [...prev, '🔊 Test audio başlatılır...']);
-    
-    // Create a simple test tone using our audio context
-    if (audioContextRef.current) {
-      const oscillator = audioContextRef.current.createOscillator();
-      const gainNode = audioContextRef.current.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContextRef.current.destination);
-      
-      oscillator.frequency.setValueAtTime(440, audioContextRef.current.currentTime); // A note
-      gainNode.gain.setValueAtTime(0.3, audioContextRef.current.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 1);
-      
-      oscillator.start(audioContextRef.current.currentTime);
-      oscillator.stop(audioContextRef.current.currentTime + 1);
-      
-      oscillator.onended = () => {
-        setMessages(prev => [...prev, '✅ Test audio tamamlandı']);
-      };
-    }
-  }, []);
-
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
@@ -703,6 +707,18 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
       audioStreamerRef.current.stop();
     }
     
+    // Clear animation queue and timeouts
+    animationQueueRef.current = [];
+    isAnimatingRef.current = false;
+    currentAnimationTimeouts.current.forEach(timeout => clearTimeout(timeout));
+    currentAnimationTimeouts.current = [];
+    
+    // Reset character to neutral state
+    if (aylaModelRef?.current) {
+      const neutralTargets = getPhonemeTargets('neutral');
+      aylaModelRef.current.updateMorphTargets(neutralTargets);
+    }
+    
     setIsConnected(false);
     setIsRecording(false);
     setMicrophoneLevel(0);
@@ -711,7 +727,18 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
     
     // Clear accumulated text for lipsync
     lastTranscriptionTextRef.current = '';
-  }, []);
+    
+    // Clear and send final word if exists
+    if (currentWordRef.current) {
+      console.log('🎙️ Final Lipsync Update on Disconnect:', { 
+        text: currentWordRef.current.text, 
+        duration: currentWordRef.current.duration 
+      });
+      // Use addToAnimationQueue for final word
+      addToAnimationQueueRef.current?.(currentWordRef.current.text, currentWordRef.current.duration);
+      currentWordRef.current = null;
+    }
+  }, [aylaModelRef]);
 
   useEffect(() => {
     return () => {
@@ -743,13 +770,27 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
           console.log('🎵 Audio playback completed');
           setIsAudioPlaying(false);
           setMessages(prev => [...prev, '🔇 AI danışığını tamamladı']);
+          
+          // Send final accumulated word if exists
+          if (currentWordRef.current) {
+            console.log('🎙️ Final Lipsync Update on Audio Complete:', { 
+              text: currentWordRef.current.text+"_", 
+              duration: currentWordRef.current.duration+70 
+            });
+            // Use addToAnimationQueue for final word
+            addToAnimationQueueRef.current?.(currentWordRef.current.text, currentWordRef.current.duration);
+            currentWordRef.current = null;
+          }
         };
 
         audioStreamerRef.current.onLipsyncUpdate = (text, duration) => {
-          console.log('🎙️ Lipsync Update:', { text, duration });
+          //console.log('🎙️ Lipsync Update - Adding to queue:', { text, duration });
           if (onLipsyncUpdate) {
             onLipsyncUpdate(text, duration);
           }
+          
+          // Use addToAnimationQueue to break word into characters
+          addToAnimationQueueRef.current?.(text, duration);
         };
 
         console.log('🎵 Audio system initialized');
@@ -770,6 +811,163 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
       }
     };
   }, []);
+
+  const sanitizeText = (text: string): string[] => {
+    // Azərbaycan hərfləri + rəqəmlər + space saxla, qalanını evez et _ bununla 
+    const cleanText = text.toLowerCase()
+      .replace(/[^abcçdeəfgğhxıijkqlmnoöprsştüuvyz0-9\s]/g, '_');
+    
+    // Consecutive consonants to optimize
+    const consonantsSecondToRemove = ['r', 'n', 's', 't', 'd', 'k', 'g', 'y', 'ç', 'z', 'ş', 'q', 'x', 'j', 'h', 'ğ', 'c', 'l'];
+    
+    // Split into characters and remove consecutive consonants
+    const chars = cleanText.split('').filter(char => char !== ' '); // Remove spaces first
+    const optimizedChars: string[] = [];
+    
+    for (let i = 0; i < chars.length; i++) {
+      const currentChar = chars[i];
+      const nextChar = chars[i + 1];
+      
+      // Add current character
+      optimizedChars.push(currentChar);
+      
+      // If current and next are both in consonants list, skip the next one
+      if (nextChar && 
+          consonantsSecondToRemove.includes(currentChar) && 
+          consonantsSecondToRemove.includes(nextChar)) {
+        console.log(`🔄 Removing consecutive consonant: ${currentChar}${nextChar} -> ${currentChar}`);
+        i++; // Skip next character
+      }
+    }
+    
+    console.log(`📝 Original: "${text}" (${chars.length} chars) -> Optimized: "${optimizedChars.join('')}" (${optimizedChars.length} chars)`);
+    
+    return optimizedChars;
+  };
+
+  // Add word to animation queue by breaking it into characters
+  const addToAnimationQueue = useCallback((text: string, totalDuration: number) => {
+    console.log('📝 Adding word to queue:', { text, totalDuration });
+    
+    const chars = sanitizeText(text);
+    if (chars.length === 0) return;
+    
+    const durationPerChar = Math.min(150, Math.round(totalDuration / chars.length));
+    
+    // Add each character to queue with its duration
+    chars.forEach((char, index) => {
+      animationQueueRef.current.push({
+        char: char,
+        duration: durationPerChar,
+        isNeutral: false
+      });
+    });
+    
+    console.log('📝 Queue length after adding word:', animationQueueRef.current.length);
+    
+    // Queue listener will automatically pick up the new items
+  }, []);
+
+  // Animation queue processor to handle sequential character animations
+  const processAnimationQueue = useCallback(() => {
+    if (isAnimatingRef.current || animationQueueRef.current.length === 0) {
+      return;
+    }
+    
+    isAnimatingRef.current = true;
+    const nextAnimation = animationQueueRef.current.shift()!;
+    const { char, duration, isNeutral } = nextAnimation;
+    
+    console.log('🎬 Processing character:', { char, duration, isNeutral });
+    
+    // Clear any existing timeouts
+    currentAnimationTimeouts.current.forEach(timeout => clearTimeout(timeout));
+    currentAnimationTimeouts.current = [];
+    
+    // Apply morph targets for this character
+    const morphTargets = getPhonemeTargets(char);
+    aylaModelRef?.current?.updateMorphTargets(morphTargets);
+    
+    // Schedule next character processing after this duration
+    const timeout = setTimeout(() => {
+      isAnimatingRef.current = false;
+      
+      // The queue listener will automatically process the next character
+      console.log('🎬 Character animation completed, ready for next');
+    }, duration);
+    
+    currentAnimationTimeouts.current.push(timeout);
+  }, [aylaModelRef]);
+  
+  // Assign the functions to refs in useEffect
+  useEffect(() => {
+    processAnimationQueueRef.current = processAnimationQueue;
+    addToAnimationQueueRef.current = addToAnimationQueue;
+  }, [processAnimationQueue, addToAnimationQueue]);
+
+  // Real-time queue listener - monitors queue constantly
+  useEffect(() => {
+    const queueListener = setInterval(() => {
+      // If there are items in queue and we're not currently animating, start processing
+      if (animationQueueRef.current.length > 0 && !isAnimatingRef.current) {
+        console.log('🎯 Queue listener detected items, starting processing...');
+        processAnimationQueueRef.current?.();
+      }
+    }, 50); // Check every 50ms for real-time responsiveness
+
+    return () => {
+      clearInterval(queueListener);
+    };
+  }, []);
+
+const getPhonemeTargets = (phoneme: string): MorphTargetData[] => {
+    if (!phoneme) return [{ morphTarget: "Merged_Open_Mouth", weight: "0" }];
+    switch (phoneme) {
+        case 'a': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.4" }];
+        case 'ə': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.5" }];
+        case 'i': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }, { morphTarget: "V_Wide", weight: "0.5" }];
+        case 'l': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'r': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'n': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'm': return [{ morphTarget: "V_Explosive", weight: "1" }];
+        case 'e': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.3" }, { morphTarget: "V_Wide", weight: "0.4" }];
+        case 's': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 't': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'd': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'k': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }]; 
+        case 'b': return [{ morphTarget: "V_Explosive", weight: "1" }];
+        case 'g': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }]; 
+        case 'y': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'u': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.1" }, { morphTarget: "V_Affricate", weight: "1" }, { morphTarget: "V_Tight", weight: "1" }];
+        case 'o': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }, { morphTarget: "V_Affricate", weight: "1" }, { morphTarget: "V_Tight", weight: "1" }];
+        case 'ç': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'z': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'ş': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'q': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }]; 
+        case 'x': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }]; 
+        case 'v': return [{ morphTarget: "V_Dental_Lip", weight: "1" }];
+        case 'j': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'ü': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.1" }, { morphTarget: "V_Affricate", weight: "1" }, { morphTarget: "V_Tight", weight: "1" }];
+        case 'ö': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }, { morphTarget: "V_Affricate", weight: "1" }, { morphTarget: "V_Tight", weight: "1" }];
+        case 'h': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+        case 'ğ': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }]; 
+        case 'c': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }]; 
+        case 'ı': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }, { morphTarget: "V_Wide", weight: "0.6" }];
+        case 'p': return [{ morphTarget: "V_Explosive", weight: "1" }];
+        case 'f': return [{ morphTarget: "V_Dental_Lip", weight: "1" }];
+        case '_': case 'neutral': return [
+            { morphTarget: "Merged_Open_Mouth", weight: "0" }, 
+            { morphTarget: "V_Lip_Open", weight: "0" }, 
+            { morphTarget: "V_Tight_O", weight: "0" }, 
+            { morphTarget: "V_Dental_Lip", weight: "0" }, 
+            { morphTarget: "V_Explosive", weight: "0" }, 
+            { morphTarget: "V_Wide", weight: "0" }, 
+            { morphTarget: "V_Affricate", weight: "0" },
+            { morphTarget: "V_Tight", weight: "0" }
+        ];
+        default: return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
+    }
+};
 
   return (
     <div className="gemini-live-audio">
@@ -831,13 +1029,6 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
           className="clear-btn"
         >
           🗑️ Təmizlə
-        </button>
-        
-        <button 
-          onClick={testAudio}
-          className="connect-btn"
-        >
-          🔊 Audio Test
         </button>
       </div>
 

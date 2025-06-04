@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import './App.css';
 import GeminiLiveAudio from './components/GeminiLiveAudio';
 import Scene from './components/scene/Scene';
 import ControlTray from './components/control-tray/ControlTray';
+import { AylaModelRef } from './components/character/Ayla';
 
 function App() {
   const apiKey = process.env.REACT_APP_GOOGLE_API_KEY || '';
@@ -13,6 +14,9 @@ function App() {
   const [shouldStartRecording, setShouldStartRecording] = useState(false);
   const [volume, setVolume] = useState(0);
   const [inVolume, setInVolume] = useState(0);
+  
+  // Ayla model ref for lipsync
+  const aylaModelRef = useRef<AylaModelRef>(null);
 
   const handleConnect = useCallback(() => {
     console.log('🚀 Start button clicked - Starting live session and recording...');
@@ -70,7 +74,7 @@ function App() {
 
   return (
     <div className="App">
-      <Scene />
+      <Scene aylaModelRef={aylaModelRef} />
       
       <ControlTray
         onStart={handleConnect}
@@ -93,6 +97,7 @@ function App() {
         externalMuted={isMuted}
         onVolumeChange={handleVolumeChange}
         onInVolumeChange={handleInVolumeChange}
+        aylaModelRef={aylaModelRef}
       />
     </div>
   );

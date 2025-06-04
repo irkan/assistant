@@ -1,14 +1,15 @@
 import React, { Suspense, useRef, useEffect, ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Environment } from '@react-three/drei';
-import { Model } from '../character/Ayla';
+import { Model, AylaModelRef } from '../character/Ayla';
 import './Scene.css';
 
 interface SceneProps {
   children?: ReactNode;
+  aylaModelRef?: React.RefObject<AylaModelRef>;
 }
 
-const Scene = ({ children }: SceneProps) => {
+const Scene = ({ children, aylaModelRef }: SceneProps) => {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,7 +51,7 @@ const Scene = ({ children }: SceneProps) => {
             {children}
 
             {/* Ayla character model */}
-            <Model position={[0, -1.4, 0]} />
+            <Model position={[0, -1.4, 0]} ref={aylaModelRef} />
 
             <Environment preset="sunset" />
           </Suspense>
