@@ -8,6 +8,7 @@ import {
 } from '@google/genai';
 import { SimpleAudioRecorder } from '../utils/audioUtils';
 
+
 export interface MorphTargetData {
     morphTarget: string;
     weight: string;
@@ -53,7 +54,9 @@ class GeminiAudioStreamer {
 
   constructor(public context: AudioContext) {
     this.gainNode = this.context.createGain();
+    this.gainNode.gain.value = 1.0; // Ensure volume is at 100%
     this.gainNode.connect(this.context.destination);
+    console.log('🎵 GainNode created with volume:', this.gainNode.gain.value);
   }
 
   addBase64Audio(base64Data: string, mimeType: string) {
@@ -76,6 +79,11 @@ class GeminiAudioStreamer {
   }
 
   addPCM16(chunk: Uint8Array) {
+    // Ensure AudioContext is running
+    if (this.context.state === 'suspended') {
+      console.log('🎵 Resuming suspended AudioContext');
+      this.context.resume();
+    }
     
     const float32Array = new Float32Array(chunk.length / 2);
     const dataView = new DataView(chunk.buffer);
@@ -104,6 +112,12 @@ class GeminiAudioStreamer {
 
     if (!this.isPlaying) {
       console.log('🎵 Starting audio playback...');
+      console.log('🎵 AudioContext state:', this.context.state);
+      console.log('🎵 AudioContext destination:', this.context.destination);
+      console.log('🎵 GainNode volume:', this.gainNode.gain.value);
+      console.log('🎵 GainNode outputs:', this.gainNode.numberOfOutputs);
+      console.log('🎵 Audio queue length:', this.audioQueue.length);
+      
       this.isPlaying = true;
       this.scheduledTime = this.context.currentTime + this.initialBufferTime;
       this.onAudioStart(this.scheduledTime);
@@ -153,6 +167,7 @@ class GeminiAudioStreamer {
       source.connect(this.gainNode);
 
       const startTime = Math.max(this.scheduledTime, this.context.currentTime);
+      console.log('🎵 Starting audio source at time:', startTime, 'duration:', audioBuffer.duration);
       source.start(startTime);
 
       this.scheduledTime = startTime + audioBuffer.duration;
@@ -196,6 +211,37 @@ class GeminiAudioStreamer {
     this.audioQueue = [];
     this.processingBuffer = new Float32Array(0);
     this.scheduledTime = this.context.currentTime;
+    
+    // Stop any currently playing audio source
+    if (this.endOfQueueAudioSource) {
+      try {
+        this.endOfQueueAudioSource.stop();
+        this.endOfQueueAudioSource.disconnect();
+        console.log('🛑 Stopped active audio source');
+      } catch (e) {
+        console.log('🛑 Audio source already stopped');
+      }
+      this.endOfQueueAudioSource = null;
+    }
+    
+    // Clear any scheduled intervals
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+    
+    // Reset stream complete flag for next playback
+    setTimeout(() => {
+      this.isStreamComplete = false;
+      // Ensure gainNode is still connected
+      if (this.gainNode.numberOfOutputs === 0) {
+        console.log('🔄 Reconnecting GainNode');
+        this.gainNode.connect(this.context.destination);
+      }
+      // Ensure volume is correct
+      this.gainNode.gain.value = 1.0;
+      console.log('🔄 Audio streamer reset for next playback, volume:', this.gainNode.gain.value);
+    }, 100);
 
     this.onAudioProgress(this.context.currentTime, false);
 
@@ -275,6 +321,9 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
   const processAnimationQueueRef = useRef<() => void>();
   const addToAnimationQueueRef = useRef<(text: string, duration: number) => void>();
 
+  // Speech recognition for interruption
+
+
   // Handle external connection control
   useEffect(() => {
     if (shouldConnect && !isConnected && !isLoading) {
@@ -331,6 +380,10 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
     }
   }, [microphoneLevel, onInVolumeChange]);
 
+
+
+
+
   // Remove the notification effect that causes loops
   // Keep only connection change notification
   useEffect(() => {
@@ -376,7 +429,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
     if (message.serverContent && !message.serverContent.modelTurn) {
       console.log('🔍 Non-modelTurn message:', message.serverContent);
       
-      const serverContent = message.serverContent as any;
+      const serverContent = message.serverContent as { inlineData?: { data?: string; mimeType?: string } };
       if (serverContent.inlineData) {
         console.log('⏭️ Legacy audio already processed in onMessage');
       }
@@ -445,6 +498,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
         responseModalities: [Modality.AUDIO],
         mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
         speechConfig: {
+          language_code: 'az-AZ', // Azerbaijani language
           voiceConfig: {
             prebuiltVoiceConfig: {
               voiceName: 'Aoede',
@@ -474,7 +528,31 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
             setIsLoading(false);
             setMessages(prev => [...prev, '✅ Gemini Live Audio-ya uğurla qoşuldu']);
           },
-          onmessage: function (message: LiveServerMessage) {            
+          onmessage: function (message: LiveServerMessage) {
+            // Handle interruption - check first before processing other content
+            if (message.serverContent?.interrupted) {
+              console.log('⚡ Audio interrupted by user speech');
+              if (audioStreamerRef.current) {
+                audioStreamerRef.current.stop();
+              }
+              setIsAudioPlaying(false);
+              setMessages(prev => [...prev, '⚡ Interruption - İstifadəçi danışdı']);
+              
+              // Reset character animation to neutral
+              if (aylaModelRef?.current) {
+                const neutralTargets = getPhonemeTargets('neutral');
+                aylaModelRef.current.updateMorphTargets(neutralTargets);
+              }
+              
+              // Clear animation queue
+              animationQueueRef.current = [];
+              isAnimatingRef.current = false;
+              currentAnimationTimeouts.current.forEach(timeout => clearTimeout(timeout));
+              currentAnimationTimeouts.current = [];
+              
+              return; // Don't process other content when interrupted
+            }
+            
             // Handle audio transcription messages  
             if (message.serverContent?.outputTranscription) {
               const transcription = message.serverContent.outputTranscription;
@@ -666,6 +744,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
       await audioRecorderRef.current.start();
       setIsRecording(true);
       setMessages(prev => [...prev, '🎤 Mikrofon başladı, danışa bilərsiniz...']);
+      
       if (onRecordingStart) {
         onRecordingStart();
       }
@@ -680,6 +759,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
       audioRecorderRef.current.stop();
       audioRecorderRef.current = undefined;
     }
+    
     setIsRecording(false);
     setMicrophoneLevel(0);
     setMessages(prev => [...prev, '🔇 Mikrofon dayandırıldı']);
@@ -738,7 +818,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
       addToAnimationQueueRef.current?.(currentWordRef.current.text, currentWordRef.current.duration);
       currentWordRef.current = null;
     }
-  }, [aylaModelRef]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -810,7 +890,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
         audioContextRef.current.close();
       }
     };
-  }, []);
+  }, [onLipsyncUpdate]);
 
   const sanitizeText = (text: string): string[] => {
     // Azərbaycan hərfləri + rəqəmlər + space saxla, qalanını evez et _ bununla 
@@ -897,7 +977,7 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
     }, duration);
     
     currentAnimationTimeouts.current.push(timeout);
-  }, [aylaModelRef]);
+  }, []);
   
   // Assign the functions to refs in useEffect
   useEffect(() => {

@@ -126,7 +126,7 @@ export function downloadBlob(data: Uint8Array, filename: string, mimeType: strin
 
 // Simplified audio recording class based on working implementation
 export class SimpleAudioRecorder extends EventEmitter {
-  private stream: MediaStream | undefined;
+  public stream: MediaStream | undefined;
   private audioContext: AudioContext | undefined;
   private source: MediaStreamAudioSourceNode | undefined;
   private processor: ScriptProcessorNode | undefined;
