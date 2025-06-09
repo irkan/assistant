@@ -45,7 +45,6 @@ class GeminiAudioStreamer {
   private checkInterval: number | null = null;
   private initialBufferTime: number = 0.1;
   private endOfQueueAudioSource: AudioBufferSourceNode | null = null;
-  private totalAudioDuration: number = 0;
 
   public onComplete = () => {};
   public onAudioStart = (startTime: number) => {};
@@ -111,13 +110,6 @@ class GeminiAudioStreamer {
     }
 
     if (!this.isPlaying) {
-      console.log('🎵 Starting audio playback...');
-      console.log('🎵 AudioContext state:', this.context.state);
-      console.log('🎵 AudioContext destination:', this.context.destination);
-      console.log('🎵 GainNode volume:', this.gainNode.gain.value);
-      console.log('🎵 GainNode outputs:', this.gainNode.numberOfOutputs);
-      console.log('🎵 Audio queue length:', this.audioQueue.length);
-      
       this.isPlaying = true;
       this.scheduledTime = this.context.currentTime + this.initialBufferTime;
       this.onAudioStart(this.scheduledTime);
@@ -167,7 +159,6 @@ class GeminiAudioStreamer {
       source.connect(this.gainNode);
 
       const startTime = Math.max(this.scheduledTime, this.context.currentTime);
-      console.log('🎵 Starting audio source at time:', startTime, 'duration:', audioBuffer.duration);
       source.start(startTime);
 
       this.scheduledTime = startTime + audioBuffer.duration;
@@ -205,7 +196,6 @@ class GeminiAudioStreamer {
   }
 
   stop() {
-    console.log('🎵 Stopping audio streamer');
     this.isPlaying = false;
     this.isStreamComplete = true;
     this.audioQueue = [];
@@ -235,7 +225,6 @@ class GeminiAudioStreamer {
       this.isStreamComplete = false;
       // Ensure gainNode is still connected
       if (this.gainNode.numberOfOutputs === 0) {
-        console.log('🔄 Reconnecting GainNode');
         this.gainNode.connect(this.context.destination);
       }
       // Ensure volume is correct
@@ -511,6 +500,14 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
         contextWindowCompression: {
           triggerTokens: '25600',
           slidingWindow: { targetTokens: '12800' },
+        },
+        systemInstruction: {
+          text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır.',
+          parts: [
+            {
+              text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır.',
+            },
+          ],
         },
       };
 
@@ -810,10 +807,6 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
     
     // Clear and send final word if exists
     if (currentWordRef.current) {
-      console.log('🎙️ Final Lipsync Update on Disconnect:', { 
-        text: currentWordRef.current.text, 
-        duration: currentWordRef.current.duration 
-      });
       // Use addToAnimationQueue for final word
       addToAnimationQueueRef.current?.(currentWordRef.current.text, currentWordRef.current.duration);
       currentWordRef.current = null;
@@ -853,10 +846,6 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
           
           // Send final accumulated word if exists
           if (currentWordRef.current) {
-            console.log('🎙️ Final Lipsync Update on Audio Complete:', { 
-              text: currentWordRef.current.text+"_", 
-              duration: currentWordRef.current.duration+70 
-            });
             // Use addToAnimationQueue for final word
             addToAnimationQueueRef.current?.(currentWordRef.current.text, currentWordRef.current.duration);
             currentWordRef.current = null;
