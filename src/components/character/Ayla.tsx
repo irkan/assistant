@@ -303,7 +303,7 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
             setCurrentAnimation('Armature|6577333224704_TempMotion');
           }
           console.log('🎭 Greeting animation completed, returning to idle');
-        }, 5000);
+        }, 3000);
         
       } catch (error) {
         console.error('🎭 Error playing greeting animation:', error);
