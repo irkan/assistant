@@ -2,6 +2,7 @@ import React, { memo, ReactNode, useEffect, useState, useRef } from "react";
 import classNames from "classnames";
 import AudioPulse from "../audio-pulse/AudioPulse";
 import { SpeechToText } from "../../utils/speechToText";
+import { AylaModelRef } from "../character/Ayla";
 import "./control-tray.scss";
 
 export type ControlTrayProps = {
@@ -13,6 +14,7 @@ export type ControlTrayProps = {
   isMuted?: boolean;
   volume?: number;
   inVolume?: number;
+  aylaRef?: React.RefObject<AylaModelRef>;
 };
 
 function ControlTray({
@@ -24,6 +26,7 @@ function ControlTray({
   isMuted = false,
   volume = 0,
   inVolume = 0,
+  aylaRef,
 }: ControlTrayProps) {
   const [muted, setMuted] = useState(isMuted);
   const speechToTextRef = useRef<SpeechToText | null>(null);
@@ -78,6 +81,20 @@ function ControlTray({
     }
   };
 
+  // Debug function to trigger greeting animation
+  const handleGreetingAnimation = async () => {
+    if (aylaRef?.current) {
+      try {
+        console.log('🎭 Debug: Triggering greeting animation...');
+        await aylaRef.current.playGreetingAnimation();
+      } catch (error) {
+        console.error('🎭 Error triggering greeting animation:', error);
+      }
+    } else {
+      console.warn('🎭 Ayla reference not available');
+    }
+  };
+
   return (
     <div className="control-tray">
       <nav className={classNames("actions-nav", { disabled: !isConnected })}>
@@ -106,6 +123,15 @@ function ControlTray({
           <span className="material-symbols-outlined filled">
             {isListeningToSpeech ? "hearing" : "record_voice_over"}
           </span>
+        </button>
+
+        {/* Debug Greeting Animation Button */}
+        <button
+          className="action-button"
+          onClick={handleGreetingAnimation}
+          title="Debug: Play Greeting Animation"
+        >
+          <span className="material-symbols-outlined filled">waving_hand</span>
         </button>
 
         {children}

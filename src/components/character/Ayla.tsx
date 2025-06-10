@@ -8,8 +8,9 @@ import React, { useEffect, useImperativeHandle, forwardRef, useState, useRef } f
 import { useGraph, ThreeElements, useFrame } from '@react-three/fiber'
 import { useGLTF, useAnimations } from '@react-three/drei'
 import { GLTF, SkeletonUtils } from 'three-stdlib'
+import { MixamoAnimationLoader } from '../../utils/mixamoAnimation'
 
-type ActionName = 'Armature|6577333224704_TempMotion' | 'Key|6577333224704_TempMotion' | 'Key.002|6577333224704_TempMotion' | 'Key.001|6577333224704_TempMotion' | 'Key.003|6577333224704_TempMotion'
+type ActionName = 'Armature|6577333224704_TempMotion' | 'Key|6577333224704_TempMotion' | 'Key.002|6577333224704_TempMotion' | 'Key.001|6577333224704_TempMotion' | 'Key.003|6577333224704_TempMotion' | 'Greeting'
 
 export interface MorphTargetData {
   morphTarget: string;
@@ -18,6 +19,7 @@ export interface MorphTargetData {
 
 export interface AylaModelRef {
   updateMorphTargets: (targets: MorphTargetData[]) => void;
+  playGreetingAnimation: () => Promise<void>;
 }
 
 interface GLTFAction extends THREE.AnimationClip {
@@ -94,14 +96,45 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
   const { scene, animations: characterAnimations } = useGLTF('/model/ayla.glb')
   const { animations: motionAnimations } = useGLTF('/model/motion.glb')
   
+  // State for loaded Mixamo animations
+  const [greetingAnimation, setGreetingAnimation] = useState<THREE.AnimationClip | null>(null)
+  const [isGreetingLoaded, setIsGreetingLoaded] = useState(false)
+  
   const animations = React.useMemo(() => 
-    [...characterAnimations, ...motionAnimations], 
-    [characterAnimations, motionAnimations]
+    [...characterAnimations, ...motionAnimations, ...(greetingAnimation ? [greetingAnimation] : [])], 
+    [characterAnimations, motionAnimations, greetingAnimation]
   )
   
   const clone = React.useMemo(() => SkeletonUtils.clone(scene), [scene])
   const { nodes, materials } = useGraph(clone) as unknown as Pick<GLTFResult, 'nodes' | 'materials'>
-  const { actions } = useAnimations(animations, group)
+  const { actions, mixer } = useAnimations(animations, group)
+  
+  // Animation state
+  const [currentAnimation, setCurrentAnimation] = useState<string>('Armature|6577333224704_TempMotion')
+  
+  // Load Mixamo greeting animation with bone mapping
+  useEffect(() => {
+    const loadGreetingAnimation = async () => {
+      try {
+        console.log('🎭 Loading Mixamo greeting animation...');
+        const loader = new MixamoAnimationLoader();
+        const result = await loader.loadMixamoAnimation('/model/greeting.fbx');
+        
+        if (result.success) {
+          console.log('🎭 Mixamo greeting animation loaded successfully');
+          result.animationClip.name = 'Greeting';
+          setGreetingAnimation(result.animationClip);
+          setIsGreetingLoaded(true);
+        } else {
+          console.error('🎭 Failed to load Mixamo greeting animation:', result.message);
+        }
+      } catch (error) {
+        console.error('🎭 Error loading Mixamo greeting animation:', error);
+      }
+    };
+    
+    loadGreetingAnimation();
+  }, []);
   
   // Göz qırpma üçün state'lər
   const blinkTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -241,8 +274,54 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
           console.warn(errorMsg);
         }
       });
+    },
+        playGreetingAnimation: async () => {
+      if (!actions.Greeting || !isGreetingLoaded) {
+        console.error('🎭 Greeting animation not available or not loaded yet');
+        return;
+      }
+      
+      try {
+        console.log('🎭 Starting greeting animation...');
+        
+        // Fade out current animation
+        if (actions[currentAnimation]) {
+          actions[currentAnimation]?.fadeOut(0.5);
+        }
+        
+        // Play greeting animation
+        actions.Greeting.reset().fadeIn(0.5).play();
+        setCurrentAnimation('Greeting');
+        
+        // Return to idle animation after 5 seconds
+        setTimeout(() => {
+          if (actions.Greeting) {
+            actions.Greeting?.fadeOut(0.5);
+          }
+          if (actions['Armature|6577333224704_TempMotion']) {
+            actions['Armature|6577333224704_TempMotion']?.reset().fadeIn(0.5).play();
+            setCurrentAnimation('Armature|6577333224704_TempMotion');
+          }
+          console.log('🎭 Greeting animation completed, returning to idle');
+        }, 5000);
+        
+      } catch (error) {
+        console.error('🎭 Error playing greeting animation:', error);
+      }
     }
   }));
+
+  // Handle animation changes
+  useEffect(() => {
+    if (actions[currentAnimation]) {
+      actions[currentAnimation]?.reset().fadeIn(0.5).play();
+      return () => {
+        if (actions[currentAnimation]) {
+          actions[currentAnimation]?.fadeOut(0.5);
+        }
+      };
+    }
+  }, [currentAnimation, actions]);
   
   useEffect(() => {
     const animationNames = Object.keys(actions)
@@ -257,6 +336,8 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
     // İlk göz qırpmanı planlaşdır
     scheduleNextBlink();
     
+    
+    
     return () => {
       Object.values(actions).forEach(action => {
         if (action && typeof action.fadeOut === 'function') {
@@ -267,7 +348,7 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
         clearTimeout(blinkTimeoutRef.current);
       }
     }
-  }, [actions])
+  }, [actions, mixer])
   
   return (
     <group ref={group} {...props} dispose={null}>

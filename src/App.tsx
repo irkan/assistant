@@ -84,6 +84,7 @@ function App() {
         isMuted={isMuted}
         volume={volume}
         inVolume={inVolume}
+        aylaRef={aylaModelRef}
       />
       
       <GeminiLiveAudio 
