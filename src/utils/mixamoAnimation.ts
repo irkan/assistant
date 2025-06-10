@@ -180,6 +180,12 @@ export class MixamoAnimationLoader {
       const mixamoBoneName = parts[0];
       const property = parts.slice(1).join('.');
       
+      // Skip root motion tracks (position and scale changes on hip bone)
+      if (mixamoBoneName === 'mixamorigHips' && (property === 'position' || property === 'scale')) {
+        console.log('🦴 Skipping root motion track:', trackName);
+        continue;
+      }
+      
       // Map Mixamo bone name to Ayla bone name
       const aylaBoneName = MIXAMO_TO_AYLA_BONE_MAP[mixamoBoneName];
       

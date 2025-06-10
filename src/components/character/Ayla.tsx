@@ -111,6 +111,7 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
   
   // Animation state
   const [currentAnimation, setCurrentAnimation] = useState<string>('Armature|6577333224704_TempMotion')
+  const [isPlayingGreeting, setIsPlayingGreeting] = useState(false)
   
   // Load Mixamo greeting animation with bone mapping
   useEffect(() => {
@@ -275,7 +276,7 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
         }
       });
     },
-        playGreetingAnimation: async () => {
+    playGreetingAnimation: async () => {
       if (!actions.Greeting || !isGreetingLoaded) {
         console.error('🎭 Greeting animation not available or not loaded yet');
         return;
@@ -283,6 +284,11 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
       
       try {
         console.log('🎭 Starting greeting animation...');
+        
+        // Save current position and scale
+        const savedPosition = group.current.position.clone();
+        const savedScale = group.current.scale.clone();
+        console.log('🎭 Saved position:', savedPosition, 'scale:', savedScale);
         
         // Fade out current animation
         if (actions[currentAnimation]) {
@@ -292,9 +298,31 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
         // Play greeting animation
         actions.Greeting.reset().fadeIn(0.5).play();
         setCurrentAnimation('Greeting');
+        setIsPlayingGreeting(true);
+        
+        // Ensure position and scale remain constant during animation
+        const maintainTransform = () => {
+          if (group.current) {
+            group.current.position.copy(savedPosition);
+            group.current.scale.copy(savedScale);
+          }
+        };
+        
+        // Set up interval to maintain transform
+        const transformInterval = setInterval(maintainTransform, 16); // ~60fps
         
         // Return to idle animation after 5 seconds
         setTimeout(() => {
+          // Clear transform maintenance
+          clearInterval(transformInterval);
+          setIsPlayingGreeting(false);
+          
+          // Restore position and scale one final time
+          if (group.current) {
+            group.current.position.copy(savedPosition);
+            group.current.scale.copy(savedScale);
+          }
+          
           if (actions.Greeting) {
             actions.Greeting?.fadeOut(0.5);
           }
