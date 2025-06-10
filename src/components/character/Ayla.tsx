@@ -99,6 +99,7 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
   // State for loaded Mixamo animations
   const [greetingAnimation, setGreetingAnimation] = useState<THREE.AnimationClip | null>(null)
   const [isGreetingLoaded, setIsGreetingLoaded] = useState(false)
+  const [isPlayingGreeting, setIsPlayingGreeting] = useState(false)
   
   const animations = React.useMemo(() => 
     [...characterAnimations, ...motionAnimations, ...(greetingAnimation ? [greetingAnimation] : [])], 
@@ -194,8 +195,26 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
     }
   };
 
-  // Hər frame'də göz qırpma animasiyasını yeniləmək üçün
+  // Hər frame'də göz qırpma və sümük düzəlişlərini yeniləmək üçün
   useFrame((_state: any, delta: number) => {
+    // Apply correction to the right forearm during greeting animation
+    if (isPlayingGreeting && group.current) {
+      const rightForearm = group.current.getObjectByName('CC_Base_R_Forearm') as THREE.Bone;
+      if (rightForearm) {
+        // Create the correction quaternion from Euler angles (in degrees)
+        const correctionEuler = new THREE.Euler(
+          THREE.MathUtils.degToRad(0),
+          THREE.MathUtils.degToRad(70),
+          THREE.MathUtils.degToRad(0)
+        );
+        const correctionQuaternion = new THREE.Quaternion().setFromEuler(correctionEuler);
+        
+        // Multiply the bone's current quaternion by the correction
+        // This adds the correction on top of the existing animation
+        rightForearm.quaternion.multiply(correctionQuaternion);
+      }
+    }
+
     // Göz qırpma animasiyası
     if (blinkState === 'closing') {
       // Gözü bağlama (0.1 saniyə)
@@ -283,6 +302,7 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
       
       try {
         console.log('🎭 Starting greeting animation...');
+        setIsPlayingGreeting(true); // Activate the useFrame correction
         
         // Fade out current animation
         if (actions[currentAnimation]) {
@@ -295,6 +315,8 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
         
         // Return to idle animation after 5 seconds
         setTimeout(() => {
+          setIsPlayingGreeting(false); // Deactivate the useFrame correction
+
           if (actions.Greeting) {
             actions.Greeting?.fadeOut(0.5);
           }
