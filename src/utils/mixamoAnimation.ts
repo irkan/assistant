@@ -168,74 +168,31 @@ export class MixamoAnimationLoader {
     
     for (const track of tracks) {
       const trackName = track.name;
-      console.log('🦴 Processing track:', trackName);
-      
-      // Parse track name: "boneName.property"
       const parts = trackName.split('.');
-      if (parts.length < 2) {
-        console.warn('🦴 Invalid track name format:', trackName);
-        continue;
-      }
-      
       const mixamoBoneName = parts[0];
       const property = parts.slice(1).join('.');
-      
-      // Skip root motion tracks (position and scale changes on hip bone)
-      if (mixamoBoneName === 'mixamorigHips' && (property === 'position' || property === 'scale')) {
-        console.log('🦴 Skipping root motion track:', trackName);
+
+      // If the track is for the hips, SKIP IT ENTIRELY.
+      // This is the most aggressive and definitive "root motion" fix,
+      // as it prevents any position, rotation, or scale changes on the root bone.
+      if (mixamoBoneName === 'mixamorigHips') {
+        console.log(`🦴 COMPLETELY SKIPPING root bone track: ${trackName}`);
         continue;
       }
       
-      // Map Mixamo bone name to Ayla bone name
+      // For all other bones, copy the track as is, but with the new name
       const aylaBoneName = MIXAMO_TO_AYLA_BONE_MAP[mixamoBoneName];
-      
-      if (!aylaBoneName) {
-        console.warn('🦴 No mapping found for bone:', mixamoBoneName);
-        continue;
-      }
-      
-      // Create new track with Ayla bone name
-      const newTrackName = `${aylaBoneName}.${property}`;
-      
-      let newTrack: THREE.KeyframeTrack;
-      
-      // Convert Float32Array to number array for compatibility
-      const timesArray = Array.from(track.times);
-      const valuesArray = Array.from(track.values);
-      
-      // Create appropriate track type based on original track
-      if (track instanceof THREE.VectorKeyframeTrack) {
-        newTrack = new THREE.VectorKeyframeTrack(
-          newTrackName,
-          timesArray,
-          valuesArray
-        );
-      } else if (track instanceof THREE.QuaternionKeyframeTrack) {
-        newTrack = new THREE.QuaternionKeyframeTrack(
-          newTrackName,
-          timesArray,
-          valuesArray
-        );
-      } else if (track instanceof THREE.NumberKeyframeTrack) {
-        newTrack = new THREE.NumberKeyframeTrack(
-          newTrackName,
-          timesArray,
-          valuesArray
-        );
+      if (aylaBoneName) {
+        const newTrackName = `${aylaBoneName}.${property}`;
+        // Clone the track by creating a new instance with the new name
+        const originalTrack = track as any; // Cast to any to access properties
+        convertedTracks.push(new originalTrack.constructor(newTrackName, Array.from(originalTrack.times), Array.from(originalTrack.values)));
       } else {
-        // Generic KeyframeTrack
-        newTrack = new THREE.KeyframeTrack(
-          newTrackName,
-          timesArray,
-          valuesArray
-        );
+        console.warn('🦴 No mapping found for bone:', mixamoBoneName);
       }
-      
-      convertedTracks.push(newTrack);
-      console.log('🦴 Converted:', mixamoBoneName, '->', aylaBoneName);
     }
     
-    console.log('🎭 Total converted tracks:', convertedTracks.length);
+    console.log('🎭 Total converted tracks after COMPLETE root motion fix:', convertedTracks.length);
     return convertedTracks;
   }
 }
