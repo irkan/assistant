@@ -16,6 +16,7 @@ export interface MorphTargetData {
 
 export interface AylaModelRef {
   updateMorphTargets: (targets: MorphTargetData[]) => void;
+  playGreetingAnimation: () => Promise<void>;
 }
 
 interface GeminiLiveAudioProps {
@@ -954,6 +955,14 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
   // Add word to animation queue by breaking it into characters
   const addToAnimationQueue = useCallback((text: string, totalDuration: number) => {
     console.log('📝 Adding word to queue:', { text, totalDuration });
+
+    // Check for greeting keywords
+    const greetingKeywords = ['salam', 'hello', 'hi', 'hey', 'greetings'];
+    const lowerCaseText = text.toLowerCase();
+    if (greetingKeywords.some(keyword => lowerCaseText.includes(keyword))) {
+      console.log('👋 Greeting detected in queue! Playing animation...');
+      aylaModelRef?.current?.playGreetingAnimation();
+    }
     
     const chars = sanitizeText(text);
     if (chars.length === 0) return;
