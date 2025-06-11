@@ -112,6 +112,17 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
   
   // Animation state
   const [currentAnimation, setCurrentAnimation] = useState<string>('Armature|6577333224704_TempMotion')
+
+  // Final, hardcoded animation correction values
+  const animationCorrections = {
+    rightForearm: { x: 0, y: 70, z: 0 },
+    rightHand:    { x: 30, y: 0, z: -40 },
+    rightThumb:   { x: 15, y: 0, z: 15 },
+    rightIndex:   { x: 10, y: 0, z: 10 },
+    rightMiddle:  { x: 5, y: 0, z: 5 },
+    rightRing:    { x: 5, y: 0, z: 5 },
+    rightPinky:   { x: 5, y: 0, z: 5 },
+  };
   
   // Load Mixamo greeting animation with bone mapping
   useEffect(() => {
@@ -197,22 +208,31 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
 
   // Hər frame'də göz qırpma və sümük düzəlişlərini yeniləmək üçün
   useFrame((_state: any, delta: number) => {
-    // Apply correction to the right forearm during greeting animation
+    // Apply corrections during greeting animation
     if (isPlayingGreeting && group.current) {
-      const rightForearm = group.current.getObjectByName('CC_Base_R_Forearm') as THREE.Bone;
-      if (rightForearm) {
-        // Create the correction quaternion from Euler angles (in degrees)
-        const correctionEuler = new THREE.Euler(
-          THREE.MathUtils.degToRad(0),
-          THREE.MathUtils.degToRad(70),
-          THREE.MathUtils.degToRad(0)
-        );
-        const correctionQuaternion = new THREE.Quaternion().setFromEuler(correctionEuler);
-        
-        // Multiply the bone's current quaternion by the correction
-        // This adds the correction on top of the existing animation
-        rightForearm.quaternion.multiply(correctionQuaternion);
-      }
+      const bonesToCorrect = [
+        // Right Hand
+        { name: 'CC_Base_R_Forearm', correction: animationCorrections.rightForearm },
+        { name: 'CC_Base_R_Hand',    correction: animationCorrections.rightHand },
+        { name: 'CC_Base_R_Thumb1',  correction: animationCorrections.rightThumb },
+        { name: 'CC_Base_R_Index1',  correction: animationCorrections.rightIndex },
+        { name: 'CC_Base_R_Mid1',    correction: animationCorrections.rightMiddle },
+        { name: 'CC_Base_R_Ring1',   correction: animationCorrections.rightRing },
+        { name: 'CC_Base_R_Pinky1',  correction: animationCorrections.rightPinky },
+      ];
+
+      bonesToCorrect.forEach(({ name, correction }) => {
+        const bone = group.current.getObjectByName(name) as THREE.Bone;
+        if (bone) {
+          const euler = new THREE.Euler(
+            THREE.MathUtils.degToRad(correction.x),
+            THREE.MathUtils.degToRad(correction.y),
+            THREE.MathUtils.degToRad(correction.z)
+          );
+          const quaternion = new THREE.Quaternion().setFromEuler(euler);
+          bone.quaternion.multiply(quaternion);
+        }
+      });
     }
 
     // Göz qırpma animasiyası

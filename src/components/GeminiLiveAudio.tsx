@@ -502,10 +502,10 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
           slidingWindow: { targetTokens: '12800' },
         },
         systemInstruction: {
-          text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır.',
+          text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır. Sistem yüklənən və ya açılan kimi ilk mesajı səsləndir "Salam, sizə necə kömək edə bilərəm?"',
           parts: [
             {
-              text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır.',
+              text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır. Sistem yüklənən və ya açılan kimi ilk mesajı səsləndir "Salam, sizə necə kömək edə bilərəm?"',
             },
           ],
         },

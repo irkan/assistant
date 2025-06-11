@@ -15,10 +15,10 @@ const MIXAMO_TO_AYLA_BONE_MAP: Record<string, string> = {
   //'mixamorigHeadTop_End': 'CC_Base_FacialBone',
   
   // Left arm
-  //'mixamorigLeftShoulder': 'CC_Base_L_Clavicle',
-  //'mixamorigLeftArm': 'CC_Base_L_Upperarm',
-  //'mixamorigLeftForeArm': 'CC_Base_L_Forearm',
-  //'mixamorigLeftHand': 'CC_Base_L_Hand',
+  'mixamorigLeftShoulder': 'CC_Base_L_Clavicle',
+  'mixamorigLeftArm': 'CC_Base_L_Upperarm',
+  'mixamorigLeftForeArm': 'CC_Base_L_Forearm',
+  'mixamorigLeftHand': 'CC_Base_L_Hand',
   
   // Left fingers
   'mixamorigLeftHandThumb1': 'CC_Base_L_Thumb1',
@@ -126,8 +126,21 @@ export class MixamoAnimationLoader {
       console.log('🎭 Original animation duration:', originalClip.duration);
       console.log('🎭 Original tracks count:', originalClip.tracks.length);
       
+      // Filter out all tracks related to the left arm to keep it static
+      const leftArmBoneNames = [
+        'mixamorigLeftShoulder',
+        'mixamorigLeftArm',
+        'mixamorigLeftForeArm',
+        'mixamorigLeftHand',
+      ];
+      
+      const filteredTracks = originalClip.tracks.filter(track => {
+        const boneName = track.name.split('.')[0];
+        return !leftArmBoneNames.includes(boneName);
+      });
+      
       // Convert bone names from Mixamo to Ayla
-      const convertedTracks = this.convertBoneNames(originalClip.tracks);
+      const convertedTracks = this.convertBoneNames(filteredTracks);
       
       // Create new animation clip with converted tracks
       const convertedClip = new THREE.AnimationClip(
