@@ -315,40 +315,80 @@ export const Model = forwardRef<AylaModelRef, ThreeElements['group']>((props, re
       });
     },
     playGreetingAnimation: async () => {
-      if (!actions.Greeting || !isGreetingLoaded) {
-        console.error('🎭 Greeting animation not available or not loaded yet');
+      const greetingAction = actions.Greeting;
+      const idleAction = actions['Armature|6577333224704_TempMotion'];
+
+      if (!greetingAction || !idleAction || !isGreetingLoaded) {
+        console.error('🎭 Greeting or Idle animation not available or not loaded yet');
         return;
       }
       
       try {
-        console.log('🎭 Starting greeting animation...');
-        setIsPlayingGreeting(true); // Activate the useFrame correction
-        
+        console.log('🎭 Creating and playing hybrid greeting animation...');
+        setIsPlayingGreeting(true);
+
+        // --- Create Hybrid Animation Clip ---
+        const idleClip = idleAction.getClip();
+        const greetingClip = greetingAction.getClip();
+
+        const leftSideBoneNames = [
+          'CC_Base_L_Clavicle', 'CC_Base_L_Upperarm', 'CC_Base_L_Forearm', 'CC_Base_L_Hand',
+          'CC_Base_L_Thumb', 'CC_Base_L_Index', 'CC_Base_L_Mid', 'CC_Base_L_Ring', 'CC_Base_L_Pinky'
+        ];
+
+        // 1. Get all tracks from the idle animation for the left arm
+        const leftArmIdleTracks = idleClip.tracks.filter(track => 
+          leftSideBoneNames.some(boneName => track.name.startsWith(boneName))
+        );
+
+        // 2. Get all tracks from the greeting animation that are NOT for the left arm
+        const rightSideGreetingTracks = greetingClip.tracks.filter(track => 
+          !leftSideBoneNames.some(boneName => track.name.startsWith(boneName))
+        );
+
+        // 3. Combine them into a new clip
+        const hybridClip = new THREE.AnimationClip(
+          'HybridGreeting',
+          greetingClip.duration,
+          [...leftArmIdleTracks, ...rightSideGreetingTracks]
+        );
+
+        const hybridAction = mixer.clipAction(hybridClip);
+        // --- End Create Hybrid Animation Clip ---
+
         // Fade out current animation
         if (actions[currentAnimation]) {
           actions[currentAnimation]?.fadeOut(0.5);
         }
         
-        // Play greeting animation
-        actions.Greeting.reset().fadeIn(0.5).play();
-        setCurrentAnimation('Greeting');
+        // Play hybrid animation
+        hybridAction.reset().fadeIn(0.5).play();
+        setCurrentAnimation('HybridGreeting'); // Set a temporary name
         
-        // Return to idle animation after 5 seconds
-        setTimeout(() => {
-          setIsPlayingGreeting(false); // Deactivate the useFrame correction
+        // Clean up after animation finishes
+        const timeoutId = setTimeout(() => {
+          setIsPlayingGreeting(false);
 
-          if (actions.Greeting) {
-            actions.Greeting?.fadeOut(0.5);
-          }
+          hybridAction.fadeOut(0.5);
+          
           if (actions['Armature|6577333224704_TempMotion']) {
             actions['Armature|6577333224704_TempMotion']?.reset().fadeIn(0.5).play();
             setCurrentAnimation('Armature|6577333224704_TempMotion');
           }
-          console.log('🎭 Greeting animation completed, returning to idle');
-        }, 3000);
+          console.log('🎭 Hybrid animation completed, returning to idle');
+          
+          // Fully clean up the temporary clip and action
+          setTimeout(() => {
+            mixer.uncacheClip(hybridClip);
+            if (group.current) {
+              mixer.uncacheAction(hybridClip as any, group.current);
+            }
+          }, 500);
+
+        }, greetingClip.duration * 1000); // Duration is in seconds
         
       } catch (error) {
-        console.error('🎭 Error playing greeting animation:', error);
+        console.error('🎭 Error playing hybrid greeting animation:', error);
       }
     }
   }));

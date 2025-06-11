@@ -96,70 +96,68 @@ export class MixamoAnimationLoader {
     try {
       console.log('🎭 Loading Mixamo animation from:', fbxPath);
       
-      // Load FBX file
       const fbxObject = await new Promise<THREE.Group>((resolve, reject) => {
-        this.fbxLoader.load(
-          fbxPath,
-          (object) => resolve(object),
-          (progress) => console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%'),
-          (error) => reject(error)
-        );
+        this.fbxLoader.load(fbxPath, resolve, undefined, reject);
       });
       
-      console.log('🎭 FBX object loaded:', fbxObject);
+      console.log('🎭 FBX object loaded successfully.');
       
-      // Extract animation clips from FBX
-      const animations = fbxObject.animations;
-      if (!animations || animations.length === 0) {
-        return {
-          animationClip: new THREE.AnimationClip('empty', 0, []),
-          originalClip: new THREE.AnimationClip('empty', 0, []),
-          success: false,
-          message: 'No animations found in FBX file'
-        };
+      const sourceClip = fbxObject.animations[0];
+      if (!sourceClip) {
+        throw new Error('No animation clip found in the FBX file.');
       }
       
-      console.log('🎭 Found animations:', animations.length);
-      
-      // Take the first animation (usually the main one)
-      const originalClip = animations[0];
-      console.log('🎭 Original animation duration:', originalClip.duration);
-      console.log('🎭 Original tracks count:', originalClip.tracks.length);
-      
-      // Filter out all tracks related to the left arm to keep it static
-      const leftArmBoneNames = [
+      // --- STEP 1: Filter out all tracks for the left arm to keep it static ---
+      const leftSideBonesToFilter = [
         'mixamorigLeftShoulder',
         'mixamorigLeftArm',
         'mixamorigLeftForeArm',
         'mixamorigLeftHand',
+        'mixamorigLeftHandMiddle1',
+        'mixamorigLeftHandMiddle2',
+        'mixamorigLeftHandMiddle3',
+        'mixamorigLeftHandThumb1',
+        'mixamorigLeftHandThumb2',
+        'mixamorigLeftHandThumb3',
+        'mixamorigLeftHandIndex1',
+        'mixamorigLeftHandIndex2',
+        'mixamorigLeftHandIndex3',
+        'mixamorigLeftHandRing1',
+        'mixamorigLeftHandRing2',
+        'mixamorigLeftHandRing3',
+        'mixamorigLeftHandPinky1',
+        'mixamorigLeftHandPinky2',
+        'mixamorigLeftHandPinky3',
+        'mixamorigLeftUpLeg', // Also filter left leg as a precaution
       ];
-      
-      const filteredTracks = originalClip.tracks.filter(track => {
+
+      const filteredTracks = sourceClip.tracks.filter(track => {
         const boneName = track.name.split('.')[0];
-        return !leftArmBoneNames.includes(boneName);
+        return !leftSideBonesToFilter.includes(boneName);
       });
-      
-      // Convert bone names from Mixamo to Ayla
+      console.log(`🎭 Filtered out left arm. Tracks reduced from ${sourceClip.tracks.length} to ${filteredTracks.length}.`);
+
+      // --- STEP 2: Convert bone names and remove root motion from the *filtered* tracks ---
       const convertedTracks = this.convertBoneNames(filteredTracks);
       
-      // Create new animation clip with converted tracks
-      const convertedClip = new THREE.AnimationClip(
-        originalClip.name + '_converted',
-        originalClip.duration,
+      // --- STEP 3: Create the final animation clip ---
+      const finalClip = new THREE.AnimationClip(
+        'Greeting', // Use a clean name
+        sourceClip.duration,
         convertedTracks
       );
       
-      console.log('🎭 Converted animation:', {
-        name: convertedClip.name,
-        duration: convertedClip.duration,
+      console.log('🎭 Final animation processed:', {
+        name: finalClip.name,
+        duration: finalClip.duration,
         tracks: convertedTracks.length
       });
       
       return {
-        animationClip: convertedClip,
-        originalClip: originalClip,
+        animationClip: finalClip,
+        originalClip: sourceClip,
         success: true,
-        message: `Successfully converted animation with ${convertedTracks.length} tracks`
+        message: `Successfully processed animation with ${convertedTracks.length} tracks.`
       };
       
     } catch (error) {
