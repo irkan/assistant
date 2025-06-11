@@ -5,9 +5,9 @@ import {
   MediaResolution,
   Modality,
   Session,
+  FunctionDeclaration,
 } from '@google/genai';
 import { SimpleAudioRecorder } from '../utils/audioUtils';
-
 
 export interface MorphTargetData {
     morphTarget: string;
@@ -483,6 +483,38 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
       // Your specified model
       const model = 'models/gemini-2.5-flash-preview-native-audio-dialog';
       
+      const greeting = {
+        name: "greeting",
+        description: "Greeting qrafikini JSON formatda göstər .",
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            json_graph: {
+              type: 'STRING',
+              description:
+                "JSON STRING representation of the graph to render. Must be a string, not a json object",
+            },
+          },
+          required: ["json_graph"],
+        },
+      } as FunctionDeclaration;
+
+      const altair = {
+        name: "altair",
+        description: "Altair qrafikini JSON formatda göstər .",
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            json_graph: {
+              type: 'STRING',
+              description:
+                "JSON STRING representation of the graph to render. Must be a string, not a json object",
+            },
+          },
+          required: ["json_graph"],
+        },
+      } as FunctionDeclaration;
+
       const config = {
         responseModalities: [Modality.AUDIO],
         mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
@@ -502,13 +534,18 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
           slidingWindow: { targetTokens: '12800' },
         },
         systemInstruction: {
-          text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır. Sistem yüklənən və ya açılan kimi ilk mesajı səsləndir "Salam, sizə necə kömək edə bilərəm?"',
+          text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır. Sistem yüklənən və ya açılan kimi ilk mesajı səsləndir "Salam, sizə necə kömək edə bilərəm?". Salamlama zamanı greeting funskiyasını işlətmək lazımdır.',
           parts: [
             {
-              text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır. Sistem yüklənən və ya açılan kimi ilk mesajı səsləndir "Salam, sizə necə kömək edə bilərəm?"',
+              text: 'Sən Azərbaycan Beynəlxalq Bankının virtual asistentisən. Adın Ayladır. Sistem yüklənən və ya açılan kimi ilk mesajı səsləndir "Salam, sizə necə kömək edə bilərəm?". Salamlama zamanı greeting funskiyasını işlətmək lazımdır.',
             },
           ],
         },
+        tools: [
+          // there is a free-tier quota for search
+          { googleSearch: {} },
+          { functionDeclarations: [greeting,altair] },
+        ],
       };
 
       console.log('📋 Model:', model);
