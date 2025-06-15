@@ -9,6 +9,8 @@ import {
 } from '@google/genai';
 import { SimpleAudioRecorder } from '../utils/audioUtils';
 
+const LIPSYNC_CHAR_DURATION_OFFSET = 20; // ms
+
 export interface MorphTargetData {
     morphTarget: string;
     weight: string;
@@ -311,9 +313,53 @@ const GeminiLiveAudio: React.FC<GeminiLiveAudioProps> = ({
   const currentAnimationTimeouts = useRef<NodeJS.Timeout[]>([]);
   const processAnimationQueueRef = useRef<() => void>();
   const addToAnimationQueueRef = useRef<(text: string, duration: number) => void>();
+  const transitionTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
-  // Speech recognition for interruption
+  const ALL_MORPH_TARGETS = useRef([
+    "Merged_Open_Mouth", "V_Lip_Open", "V_Tight_O", "V_Dental_Lip", 
+    "V_Explosive", "V_Wide", "V_Affricate", "V_Tight"
+  ]).current;
 
+  const initialMorphWeights = useRef(Object.fromEntries(ALL_MORPH_TARGETS.map(name => [name, 0]))).current;
+
+  const currentMorphWeightsRef = useRef<Record<string, number>>({ ...initialMorphWeights });
+
+  const smoothUpdateMorphTargets = useCallback((targetMorphs: MorphTargetData[], transitionDuration: number) => {
+    transitionTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+    transitionTimeoutsRef.current = [];
+
+    const startWeights = { ...currentMorphWeightsRef.current };
+    
+    const targetWeightsMap: Record<string, number> = { ...initialMorphWeights };
+    targetMorphs.forEach(target => {
+        targetWeightsMap[target.morphTarget] = parseFloat(target.weight);
+    });
+
+    const steps = 5;
+    
+    for (let i = 1; i <= steps; i++) {
+        const timeoutId = setTimeout(() => {
+            const newWeightsData: MorphTargetData[] = [];
+            ALL_MORPH_TARGETS.forEach(morphName => {
+                const startWeight = startWeights[morphName] ?? 0;
+                const targetWeight = targetWeightsMap[morphName] ?? 0;
+                const newWeight = startWeight + (targetWeight - startWeight) * (i / steps);
+                
+                newWeightsData.push({
+                    morphTarget: morphName,
+                    weight: newWeight.toFixed(4)
+                });
+            });
+            
+            aylaModelRef?.current?.updateMorphTargets(newWeightsData);
+            
+            if (i === steps) {
+                currentMorphWeightsRef.current = { ...targetWeightsMap };
+            }
+        }, (transitionDuration / steps) * i);
+        transitionTimeoutsRef.current.push(timeoutId as unknown as NodeJS.Timeout);
+    }
+  }, [aylaModelRef, initialMorphWeights, ALL_MORPH_TARGETS]);
 
   // Handle external connection control
   useEffect(() => {
@@ -706,7 +752,7 @@ Unutmayın ki, əsas məqsəd respondentlərin fikirlərini və təcrübələrin
               // Reset character animation to neutral
               if (aylaModelRef?.current) {
                 const neutralTargets = getPhonemeTargets('neutral');
-                aylaModelRef.current.updateMorphTargets(neutralTargets);
+                smoothUpdateMorphTargets(neutralTargets, 50);
               }
               
               // Clear animation queue
@@ -957,11 +1003,13 @@ Unutmayın ki, əsas məqsəd respondentlərin fikirlərini və təcrübələrin
     isAnimatingRef.current = false;
     currentAnimationTimeouts.current.forEach(timeout => clearTimeout(timeout));
     currentAnimationTimeouts.current = [];
+    transitionTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+    transitionTimeoutsRef.current = [];
     
     // Reset character to neutral state
     if (aylaModelRef?.current) {
       const neutralTargets = getPhonemeTargets('neutral');
-      aylaModelRef.current.updateMorphTargets(neutralTargets);
+      smoothUpdateMorphTargets(neutralTargets, 100);
     }
     
     setIsConnected(false);
@@ -982,7 +1030,7 @@ Unutmayın ki, əsas məqsəd respondentlərin fikirlərini və təcrübələrin
     
     // Reset the initial message flag
     initialMessageSentRef.current = false;
-  }, [aylaModelRef]);
+  }, [aylaModelRef, smoothUpdateMorphTargets]);
 
   useEffect(() => {
     return () => {
@@ -1111,7 +1159,8 @@ Unutmayın ki, əsas məqsəd respondentlərin fikirlərini və təcrübələrin
     const chars = sanitizeText(text);
     if (chars.length === 0) return;
     
-    const durationPerChar = Math.min(150, Math.round(totalDuration / chars.length));
+    const baseDurationPerChar = Math.min(150, Math.round(totalDuration / chars.length));
+    const durationPerChar = Math.max(20, baseDurationPerChar - LIPSYNC_CHAR_DURATION_OFFSET);
     
     // Add each character to queue with its duration
     chars.forEach((char, index) => {
@@ -1125,7 +1174,7 @@ Unutmayın ki, əsas məqsəd respondentlərin fikirlərini və təcrübələrin
     console.log('📝 Queue length after adding word:', animationQueueRef.current.length);
     
     // Queue listener will automatically pick up the new items
-  }, []);
+  }, [aylaModelRef]);
 
   // Animation queue processor to handle sequential character animations
   const processAnimationQueue = useCallback(() => {
@@ -1145,7 +1194,7 @@ Unutmayın ki, əsas məqsəd respondentlərin fikirlərini və təcrübələrin
     
     // Apply morph targets for this character
     const morphTargets = getPhonemeTargets(char);
-    aylaModelRef?.current?.updateMorphTargets(morphTargets);
+    smoothUpdateMorphTargets(morphTargets, 50);
     
     // Schedule next character processing after this duration
     const timeout = setTimeout(() => {
@@ -1156,7 +1205,7 @@ Unutmayın ki, əsas məqsəd respondentlərin fikirlərini və təcrübələrin
     }, duration);
     
     currentAnimationTimeouts.current.push(timeout);
-  }, []);
+  }, [smoothUpdateMorphTargets]);
   
   // Assign the functions to refs in useEffect
   useEffect(() => {
@@ -1214,16 +1263,9 @@ const getPhonemeTargets = (phoneme: string): MorphTargetData[] => {
         case 'ı': return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }, { morphTarget: "V_Wide", weight: "0.6" }];
         case 'p': return [{ morphTarget: "V_Explosive", weight: "1" }];
         case 'f': return [{ morphTarget: "V_Dental_Lip", weight: "1" }];
-        case '_': case 'neutral': return [
-            { morphTarget: "Merged_Open_Mouth", weight: "0" }, 
-            { morphTarget: "V_Lip_Open", weight: "0" }, 
-            { morphTarget: "V_Tight_O", weight: "0" }, 
-            { morphTarget: "V_Dental_Lip", weight: "0" }, 
-            { morphTarget: "V_Explosive", weight: "0" }, 
-            { morphTarget: "V_Wide", weight: "0" }, 
-            { morphTarget: "V_Affricate", weight: "0" },
-            { morphTarget: "V_Tight", weight: "0" }
-        ];
+        case '_': case 'neutral':
+            currentMorphWeightsRef.current = { ...initialMorphWeights };
+            return ALL_MORPH_TARGETS.map(name => ({ morphTarget: name, weight: "0" }));
         default: return [{ morphTarget: "Merged_Open_Mouth", weight: "0.2" }];
     }
 };
