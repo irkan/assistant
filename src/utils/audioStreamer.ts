@@ -2,7 +2,7 @@ export class GeminiAudioStreamer {
     public audioQueue: Float32Array[] = [];
     public isPlaying: boolean = false;
     private sampleRate: number = 24000;
-    private bufferSize: number = 7680;
+    private bufferSize: number = 1024;
     private processingBuffer: Float32Array = new Float32Array(0);
     private scheduledTime: number = 0;
     public gainNode: GainNode;
