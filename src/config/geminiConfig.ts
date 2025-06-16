@@ -1,7 +1,7 @@
 import { FunctionDeclaration, Modality, MediaResolution, Type } from '@google/genai';
 import { systemInstructionText } from './systemInstruction';
 
-export const MODEL_NAME = 'models/gemini-2.5-flash-preview-native-audio-dialog';
+export const MODEL_NAME = 'gemini-2.5-flash-preview-native-audio-dialog';
 
 export const greetingFunctionDeclaration: FunctionDeclaration = {
   name: "greeting",
